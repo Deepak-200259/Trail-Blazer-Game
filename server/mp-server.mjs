@@ -10,6 +10,7 @@ import { randomBytes } from 'node:crypto'
 const port = Number(process.env.MP_PORT ?? 8000)
 const MAX_PER_ROOM = 4
 const CD_MS = 10_000
+const HEARTBEAT_MS = 15_000
 
 const wss = new WebSocketServer({ port })
 wss.on('error', (err) => {
@@ -38,6 +39,8 @@ const rooms = new Map()
 const roomChars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 
 const MAX_NAME_LEN = 20
+/** @type {WeakMap<import('ws').WebSocket, boolean>} */
+const wsAlive = new WeakMap()
 
 function sanitizeName(raw) {
   if (raw == null) return ''
@@ -283,6 +286,10 @@ function leaveRoomPlayer(pid) {
 }
 
 wss.on('connection', (ws) => {
+  wsAlive.set(ws, true)
+  ws.on('pong', () => {
+    wsAlive.set(ws, true)
+  })
   const id = randomBytes(4).toString('hex')
   players.set(id, { ws, roomCode: null, vehicle: 1, name: 'Player', ready: false, isHost: false, inGame: false })
   send(ws, { t: 'hello', id })
@@ -414,6 +421,7 @@ wss.on('connection', (ws) => {
   })
 
   ws.on('close', () => {
+    wsAlive.delete(ws)
     const p = players.get(id)
     if (p && p.roomCode) {
       leaveRoomPlayer(id)
@@ -421,6 +429,32 @@ wss.on('connection', (ws) => {
     players.delete(id)
   })
 })
+
+const heartbeatTimer = setInterval(() => {
+  for (const ws of wss.clients) {
+    if (ws.readyState !== 1) continue
+    const alive = wsAlive.get(ws) ?? false
+    if (!alive) {
+      try {
+        ws.terminate()
+      } catch {
+        /* ignore */
+      }
+      continue
+    }
+    wsAlive.set(ws, false)
+    try {
+      ws.ping()
+    } catch {
+      try {
+        ws.terminate()
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+}, HEARTBEAT_MS)
+heartbeatTimer.unref?.()
 
 wss.on('listening', () => {
   // eslint-disable-next-line no-console

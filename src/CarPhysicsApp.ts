@@ -1206,10 +1206,10 @@ export class CarPhysicsApp {
     this.mp.onLeave = (id) => {
       this.removeRemotePlayer(id)
     }
-    this.mp.onConnectionLost = () => {
-      this.hudStatusEl.textContent = 'Multiplayer disconnected'
+    this.mp.onConnectionLost = (info) => {
+      this.hudStatusEl.textContent = `Multiplayer disconnected (code ${info.code})`
       window.setTimeout(() => {
-        if (this.hudStatusEl.textContent === 'Multiplayer disconnected') {
+        if (this.hudStatusEl.textContent.startsWith('Multiplayer disconnected')) {
           this.hudStatusEl.textContent = ''
         }
       }, 2000)

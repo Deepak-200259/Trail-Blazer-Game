@@ -82,7 +82,7 @@ export class MultiplayerClient {
   onGameStart?: (peerIds: string[], pl: LobbyPlayer[]) => void
   onPeerKinematics?: (id: string, k: MultiplayerKinematics) => void
   onServerError?: (code: string) => void
-  onConnectionLost?: () => void
+  onConnectionLost?: (info: { code: number; reason: string; clean: boolean }) => void
 
   get connected(): boolean {
     return this.ws !== null && this.ws.readyState === WebSocket.OPEN
@@ -343,7 +343,7 @@ export class MultiplayerClient {
         if (this.ws !== socket) return
         if (!this.everHello) fail(new Error('WebSocket error'))
       })
-      socket.addEventListener('close', () => {
+      socket.addEventListener('close', (ev) => {
         if (this.ws !== socket) return
         if (to !== undefined) clearTimeout(to)
         this.ws = null
@@ -356,7 +356,11 @@ export class MultiplayerClient {
           return
         }
         if (was && !this.userDisconnect) {
-          this.onConnectionLost?.()
+          this.onConnectionLost?.({
+            code: ev.code,
+            reason: ev.reason ?? '',
+            clean: ev.wasClean,
+          })
         }
       })
     })

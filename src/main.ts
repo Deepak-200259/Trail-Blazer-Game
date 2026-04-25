@@ -278,6 +278,9 @@ async function waitForAppStart(): Promise<StartMode> {
   return new Promise<StartMode>((resolve) => {
     let appStarted = false
     let activeWs = ''
+    let lastRoomCode = ''
+    let lastWasHost = false
+    let lastDisplayName = ''
     let mpFlowContext: 'host' | 'join' | null = null
     let roomOpTimeout: ReturnType<typeof setTimeout> | null = null
     const clearRoomOpTimeout = (): void => {
@@ -426,12 +429,40 @@ async function waitForAppStart(): Promise<StartMode> {
       }
     }
 
+    const tryQuickRejoin = async (reason: string): Promise<boolean> => {
+      if (appStarted) return false
+      const code = String(lastRoomCode).trim().toUpperCase()
+      const name = CarConfig.getSessionMultiplayerDisplayName().trim() || lastDisplayName.trim()
+      if (lastWasHost || code.length < 4 || name.length < 1) return false
+      showMpFlowLoading('Reconnecting to room…', 'join')
+      clearRoomOpTimeout()
+      const c = await ensureMp()
+      if (!c) {
+        hideMpFlowLoading()
+        return false
+      }
+      CarConfig.setSessionMultiplayerDisplayName(name)
+      if (!c.joinRoom(code, vLobby, name)) {
+        hideMpFlowLoading()
+        return false
+      }
+      roomOpTimeout = window.setTimeout(() => {
+        roomOpTimeout = null
+        if (lastLobby != null) return
+        hideMpFlowLoading()
+        showStartPanel('mp-menu')
+        mpMenuErr.textContent = `${reason} Quick rejoin timed out.`
+      }, 12_000)
+      return true
+    }
+
     const attachMultiplayerClientHandlers = (c: MultiplayerClient): void => {
       c.onLobby = (m) => {
         clearRoomOpTimeout()
         try {
           const pl = applySessionNameToLocalRow(c, m.pl)
           lastLobby = { code: m.code, ph: m.ph, end: m.end, pl }
+          lastRoomCode = m.code
           joinErr.textContent = ''
           mpMenuErr.textContent = ''
           showStartPanel('lobby')
@@ -446,6 +477,20 @@ async function waitForAppStart(): Promise<StartMode> {
           if (lobbyStatus) lobbyStatus.textContent = errText(code)
           if (appStarted) {
             CarConfig.notifyMultiplayerRoomEndedInGame()
+          }
+          if (!appStarted) {
+            const reason =
+              code === 'HOST_LEFT'
+                ? 'Host left or server restarted.'
+                : 'Room closed by server.'
+            void (async () => {
+              const ok = await tryQuickRejoin(reason)
+              if (ok) return
+              resetMp()
+              showStartPanel('mp-menu')
+              mpMenuErr.textContent = `${reason} ${lastWasHost ? 'Host again to continue.' : 'Ask host for a new code.'}`
+            })()
+            return
           }
           resetMp()
           showStartPanel('mp-menu')
@@ -472,14 +517,20 @@ async function waitForAppStart(): Promise<StartMode> {
           }
         }
       }
-      c.onConnectionLost = () => {
+      c.onConnectionLost = (info) => {
         if (appStarted) return
         clearRoomOpTimeout()
-        hideMpFlowLoading()
-        resetMp()
-        if (lobbyStatus) lobbyStatus.textContent = 'Connection lost — try again.'
-        showStartPanel('mp-menu')
-        mpMenuErr.textContent = 'Disconnected from the server. Make sure the game server is running and try again.'
+        void (async () => {
+          const ok = await tryQuickRejoin('Connection lost.')
+          if (ok) return
+          hideMpFlowLoading()
+          resetMp()
+          if (lobbyStatus) lobbyStatus.textContent = 'Connection lost — try again.'
+          showStartPanel('mp-menu')
+          mpMenuErr.textContent =
+            `Disconnected from server (close ${info.code}${info.clean ? ', clean' : ''}). ` +
+            'If this happens repeatedly, the host may have left or the server may have restarted.'
+        })()
       }
       c.onGameStart = (pr, plFromGo) => {
         if (appStarted) return
@@ -609,6 +660,9 @@ async function waitForAppStart(): Promise<StartMode> {
         mpMenuErr.textContent = ''
         const displayName = await showMpNameModal("You'll host the room. Enter the name others see above your car.")
         if (displayName == null) return
+        lastDisplayName = displayName
+        lastWasHost = true
+        lastRoomCode = ''
         showMpFlowLoading('Creating room…', 'host')
         clearRoomOpTimeout()
         vLobby = readStoredVehicle()
@@ -670,6 +724,9 @@ async function waitForAppStart(): Promise<StartMode> {
         }
         const displayName = await showMpNameModal('Enter the name others see above your car in-game.')
         if (displayName == null) return
+        lastDisplayName = displayName
+        lastWasHost = false
+        lastRoomCode = raw
         showMpFlowLoading('Joining room…', 'join')
         clearRoomOpTimeout()
         CarConfig.setActiveVehicleChoice(vLobby)
