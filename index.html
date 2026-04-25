@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>Trail Blazer Game</title>
+  </head>
+  <body>
+    <div id="start-overlay" class="start-overlay" role="dialog" aria-modal="true" aria-labelledby="start-title">
+      <div id="mp-name-modal" class="mp-name-modal" hidden>
+        <div class="mp-name-modal__panel" role="dialog" aria-modal="true" aria-labelledby="mp-name-modal-title">
+          <h2 class="mp-name-modal__title" id="mp-name-modal-title">Your name</h2>
+          <p class="mp-name-modal__hint" id="mp-name-modal-hint">Enter a display name.</p>
+          <label class="mp-name-modal__label" for="mp-name-input">Name (required)</label>
+          <input
+            type="text"
+            id="mp-name-input"
+            class="mp-name-modal__input"
+            maxlength="20"
+            spellcheck="false"
+            autocomplete="off"
+            aria-describedby="mp-name-modal-err"
+          />
+          <p id="mp-name-modal-err" class="mp-name-modal__err" role="alert" hidden></p>
+          <div class="mp-name-modal__actions">
+            <button type="button" id="mp-name-confirm" class="start-game-btn">Confirm</button>
+            <button type="button" id="mp-name-cancel" class="pause-btn">Cancel</button>
+          </div>
+        </div>
+      </div>
+      <div id="mp-flow-loading" class="mp-flow-loading" hidden role="status" aria-live="polite" aria-busy="true">
+        <div class="mp-flow-loading-panel">
+          <p id="mp-flow-loading-title" class="mp-flow-loading-title">Please wait…</p>
+          <div class="mp-flow-loading-bar" aria-hidden="true">
+            <div class="mp-flow-loading-bar-fill mp-flow-loading-bar-fill--indeterminate"></div>
+          </div>
+        </div>
+      </div>
+      <div id="start-panel-root" class="start-panel">
+        <h1 id="start-title" class="start-title">Trail Blazer</h1>
+        <button type="button" id="start-singleplayer" class="start-game-btn">Singleplayer</button>
+        <button type="button" id="start-mode-mp" class="start-game-btn start-game-btn--secondary">Multiplayer</button>
+        <button type="button" id="start-options-root" class="start-game-btn">Options</button>
+        <button type="button" id="start-quit" class="start-game-btn">Quit</button>
+      </div>
+      <div id="start-panel-single" class="start-panel" hidden>
+        <div class="pause-title">Solo</div>
+        <button type="button" id="start-single-play" class="start-game-btn">Play</button>
+        <button type="button" id="start-single-options" class="start-game-btn">Options</button>
+        <button type="button" id="start-single-back" class="pause-btn">Back</button>
+      </div>
+      <div id="start-panel-options" class="start-panel" hidden>
+        <div class="pause-title">Options</div>
+        <div class="pause-toggle-row start-vehicle-row">
+          <span>Vehicle</span>
+          <div class="start-vehicle-picker">
+            <button type="button" id="start-vehicle-prev" class="start-vehicle-arrow" aria-label="Previous vehicle">
+              &#9664;
+            </button>
+            <div class="start-vehicle-carousel" aria-live="polite">
+              <div id="start-vehicle-track" class="start-vehicle-track">
+                <div class="start-vehicle-item">
+                  <img class="start-vehicle-thumb" src="/vehicle_1_thumbnail.png" alt="Trail Ranger preview" />
+                  <span class="start-vehicle-name">Trail Ranger</span>
+                </div>
+                <div class="start-vehicle-item">
+                  <img class="start-vehicle-thumb" src="/vehicle_2_thumbnail.png" alt="Dune Titan preview" />
+                  <span class="start-vehicle-name">Dune Titan</span>
+                </div>
+                <div class="start-vehicle-item">
+                  <img class="start-vehicle-thumb" src="/vehicle_3_thumbnail.png" alt="Wasteland Mk III preview" />
+                  <span class="start-vehicle-name">Wasteland Mk III</span>
+                </div>
+              </div>
+            </div>
+            <button type="button" id="start-vehicle-next" class="start-vehicle-arrow" aria-label="Next vehicle">
+              &#9654;
+            </button>
+          </div>
+        </div>
+        <div class="pause-toggle-row">
+          <span>Sound</span>
+          <button type="button" id="start-sound-toggle" class="pause-switch" aria-pressed="false">
+            <span class="pause-switch-track"><span class="pause-switch-thumb"></span></span>
+            <span class="pause-switch-text">OFF</span>
+          </button>
+        </div>
+        <button type="button" id="start-options-back" class="pause-btn">Back</button>
+      </div>
+      <div id="start-panel-mp-menu" class="start-panel" hidden>
+        <div class="pause-title">Multiplayer</div>
+        <button type="button" id="mp-menu-host" class="start-game-btn">Host room</button>
+        <button type="button" id="mp-menu-join" class="start-game-btn start-game-btn--secondary">Join room</button>
+        <p id="mp-menu-err" class="start-field-err" role="status" aria-live="polite"></p>
+        <button type="button" id="mp-menu-back" class="pause-btn">Back</button>
+      </div>
+      <div id="start-panel-join" class="start-panel" hidden>
+        <div class="pause-title">Join a room</div>
+        <p class="start-multiplayer-hint">
+          You can only join while the game has not started. Enter the room id from the host, then you can pick your
+          car in the lobby.
+        </p>
+        <label class="start-mp-label" for="join-room-code">Room id</label>
+        <input
+          id="join-room-code"
+          class="start-mp-input"
+          type="text"
+          placeholder="A1B2C3"
+          spellcheck="false"
+          autocapitalize="characters"
+          autocomplete="off"
+        />
+        <p id="join-err" class="start-field-err" role="status" aria-live="polite"></p>
+        <button type="button" id="join-submit" class="start-game-btn">Join room</button>
+        <button type="button" id="join-back" class="pause-btn">Back</button>
+      </div>
+      <div id="start-panel-lobby" class="start-panel" hidden>
+        <div class="pause-title">Room</div>
+        <p class="lobby-room-row">
+          <span id="lobby-code" class="lobby-code">------</span>
+          <button type="button" id="lobby-copy" class="lobby-copy-btn" aria-label="Copy room id">Copy</button>
+        </p>
+        <div class="pause-toggle-row start-vehicle-row" style="margin-top: 0.75rem">
+          <span>Vehicle</span>
+          <div class="start-vehicle-picker">
+            <button type="button" id="lobby-vehicle-prev" class="start-vehicle-arrow" aria-label="Previous vehicle">
+              &#9664;
+            </button>
+            <div class="start-vehicle-carousel" aria-live="polite">
+              <div id="lobby-vehicle-track" class="start-vehicle-track">
+                <div class="start-vehicle-item">
+                  <img class="start-vehicle-thumb" src="/vehicle_1_thumbnail.png" alt="Trail Ranger preview" />
+                  <span class="start-vehicle-name">Trail Ranger</span>
+                </div>
+                <div class="start-vehicle-item">
+                  <img class="start-vehicle-thumb" src="/vehicle_2_thumbnail.png" alt="Dune Titan preview" />
+                  <span class="start-vehicle-name">Dune Titan</span>
+                </div>
+                <div class="start-vehicle-item">
+                  <img class="start-vehicle-thumb" src="/vehicle_3_thumbnail.png" alt="Wasteland Mk III preview" />
+                  <span class="start-vehicle-name">Wasteland Mk III</span>
+                </div>
+              </div>
+            </div>
+            <button type="button" id="lobby-vehicle-next" class="start-vehicle-arrow" aria-label="Next vehicle">
+              &#9654;
+            </button>
+          </div>
+        </div>
+        <p id="lobby-countdown" class="lobby-countdown" hidden aria-live="polite">Starting in 10…</p>
+        <ul id="lobby-list" class="lobby-list" aria-label="Players in room"></ul>
+        <p id="lobby-status" class="lobby-status" role="status" aria-live="polite"></p>
+        <button type="button" id="lobby-ready" class="start-game-btn">Ready</button>
+        <button type="button" id="lobby-leave" class="pause-btn">Leave</button>
+      </div>
+    </div>
+    <div id="loading-overlay" class="loading-overlay" hidden>
+      <div class="loading-panel">
+        <div class="loading-title">Loading World</div>
+        <div class="loading-bar">
+          <div id="loading-bar-fill" class="loading-bar-fill"></div>
+        </div>
+        <div id="loading-progress-text" class="loading-progress-text">0%</div>
+      </div>
+    </div>
+    <div id="mp-race-countdown" class="mp-race-countdown" hidden aria-live="assertive" aria-atomic="true"></div>
+    <div id="hud-wrap" class="hud-off">
+      <div id="hud-checkpoints">
+        <div id="hud-checkpoints-value" aria-live="polite">0 / 0</div>
+      </div>
+      <div id="hud-timer" aria-live="polite">00:00</div>
+      <div id="hud-mp" class="hud-mp" aria-live="polite"></div>
+      <div id="hud-speed-kmh" aria-live="polite">0 km/h</div>
+      <p id="hud-controls-hint">WASD move · <kbd>R</kbd> reset</p>
+    </div>
+    <div id="hud-status" role="status" aria-live="polite"></div>
+    <div id="game-over-overlay" class="game-over-overlay" hidden>
+      <div class="game-over-panel">
+        <div class="game-over-title">GAME OVER</div>
+        <div class="game-over-row">Time <span id="game-over-final-time">00:00</span></div>
+        <div class="game-over-row">Best <span id="game-over-best-time">—</span></div>
+        <button type="button" id="game-over-restart" class="game-over-restart">Restart</button>
+      </div>
+    </div>
+    <div id="pause-overlay" class="pause-overlay" hidden>
+      <div id="pause-panel-main" class="pause-panel">
+        <div class="pause-title">PAUSED</div>
+        <button type="button" id="pause-resume" class="pause-btn">Resume</button>
+        <button type="button" id="pause-restart" class="pause-btn">Restart</button>
+        <button type="button" id="pause-options" class="pause-btn">Options</button>
+        <button type="button" id="pause-quit" class="pause-btn">Quit</button>
+      </div>
+      <div id="pause-panel-options" class="pause-panel" hidden>
+        <div class="pause-title">Options</div>
+        <div class="pause-toggle-row">
+          <span>Sound</span>
+          <button type="button" id="pause-sound-toggle" class="pause-switch" aria-pressed="true">
+            <span class="pause-switch-track"><span class="pause-switch-thumb"></span></span>
+            <span class="pause-switch-text">ON</span>
+          </button>
+        </div>
+        <button type="button" id="pause-options-back" class="pause-btn">Back</button>
+      </div>
+    </div>
+    <canvas id="canvas"></canvas>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
