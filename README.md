@@ -1,73 +1,163 @@
-# React + TypeScript + Vite
+# Car Physics (Desert Driving + Multiplayer)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A stylized off-road driving game built with Three.js + Rapier physics, with both singleplayer and room-based multiplayer.
 
-Currently, two official plugins are available:
+## About the game
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Drive across a large desert terrain with checkpoints, dunes, props, and dynamic vehicle handling.
+- Choose from multiple vehicles (including custom chassis/tyre sets).
+- Play solo, or host/join multiplayer rooms with a shareable room code.
+- Multiplayer syncs car transforms/velocity and supports lobby flow (vehicle + ready state + countdown).
 
-## React Compiler
+## Tech stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- `three` for rendering
+- `@dimforge/rapier3d-compat` for physics
+- `troika-three-text` for in-world player labels
+- `ws` for multiplayer WebSocket server
+- Vite + TypeScript for dev/build
 
-## Expanding the ESLint configuration
+## Quick start
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Prerequisites
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- Node.js 18+ (recommended 20+)
+- npm
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### Install
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Run singleplayer/dev frontend
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run dev
 ```
+
+### Run multiplayer server (in another terminal)
+
+```bash
+npm run mp-server
+```
+
+By default:
+- Frontend dev server: Vite default port (usually `5173`)
+- Multiplayer WS server: `8000`
+
+In dev, frontend can connect via the Vite proxy path `/_mp`.
+
+## How to play
+
+### Controls
+
+- `W` / `ArrowUp`: accelerate
+- `S` / `ArrowDown`: reverse
+- `A` / `ArrowLeft`: steer left
+- `D` / `ArrowRight`: steer right
+- `Space`: brake
+- `R`: reset vehicle
+- `Esc`: pause/unpause
+
+### Singleplayer
+
+1. Open the game.
+2. Select `Singleplayer`.
+3. Optionally open `Options` and pick a vehicle.
+4. Press `Play`.
+
+### Multiplayer overview
+
+Multiplayer uses room codes from the websocket server. One player hosts, others join by code.
+
+## Multiplayer: host a room
+
+1. Open `Multiplayer`.
+2. Click `Host room`.
+3. Enter your display name.
+4. Wait for room creation; copy/share the room code.
+5. In lobby, select your vehicle and click `Ready`.
+6. Match starts after all players are ready and countdown completes.
+
+## Multiplayer: join a room
+
+1. Open `Multiplayer`.
+2. Click `Join room`.
+3. Enter room code (provided by host).
+4. Enter your display name.
+5. In lobby, choose your vehicle and click `Ready`.
+6. Game starts when all players are ready.
+
+## Project scripts
+
+- `npm run dev` - start frontend dev server
+- `npm run mp-server` - start websocket multiplayer server
+- `npm run build` - typecheck + production build
+- `npm run preview` - preview production build locally
+- `npm run lint` - run lint checks
+
+## Multiplayer deployment notes
+
+For production, deploy frontend and websocket server separately:
+
+- Frontend: Vercel/Netlify/etc.
+- Multiplayer server: Render/Railway/Fly.io/VPS (must support long-lived websocket process)
+
+Set frontend env var:
+
+- `VITE_MP_URL=wss://<your-mp-server-domain>`
+
+If frontend is HTTPS, websocket must be `wss://` (not `ws://`).
+
+## Project structure
+
+Core folders/files:
+
+- `src/main.ts` - start screen flow, mode selection, lobby UI wiring
+- `src/CarPhysicsApp.ts` - main game loop, scene setup, vehicle, multiplayer runtime
+- `src/CarConfig.ts` - central tuning constants, URLs, gameplay config
+- `src/RaycastCar.ts` - local car physics/controller integration with Rapier
+- `src/MultiplayerClient.ts` - websocket client protocol and message handling
+- `src/DesertTerrainGround.ts` - terrain generation + collision surface
+- `src/DesertCacti.ts`, `src/DesertRocksAndRuins.ts` - world prop placement/colliders
+- `src/style.css` - UI styling
+- `server/mp-server.mjs` - websocket room server (host/join/lobby/state relay)
+- `public/` - static assets (GLBs, textures, thumbnails, fonts)
+
+## How to expand the game
+
+Good extension points:
+
+- Add new vehicles:
+  - Add chassis/tyre models in `public/`
+  - Wire them in `CarConfig.ts`
+  - Add UI thumbnail/cards in start/lobby carousel
+- Improve multiplayer:
+  - Better reconciliation/interpolation
+  - Add chat, ping indicator, reconnect flow
+- Add gameplay systems:
+  - Lap/time trials, penalties, collectibles
+  - Dynamic weather/time of day
+  - AI traffic or bots
+- Improve deployment:
+  - Persistent room service, telemetry, crash logging
+  - Matchmaking beyond room codes
+
+## Troubleshooting
+
+- Multiplayer not connecting:
+  - Ensure `npm run mp-server` is running
+  - Verify frontend points to correct WS URL
+  - Confirm `wss://` in production
+- Players cannot join:
+  - Ensure host/server is online
+  - Room code is correct
+  - Room not already started/full
+- Vehicle/props look wrong after updates:
+  - Clear browser cache and hard refresh
+  - Rebuild frontend (`npm run build`)
+
+---
+
+If you want, this README can be split further into `docs/` pages (Gameplay, Multiplayer Protocol, Deployment, Asset Pipeline) for easier maintenance.
