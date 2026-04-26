@@ -23,6 +23,7 @@ import { RainOverlayEffect } from './RainOverlayEffect'
 import { WebGameAudio } from './WebGameAudio.ts'
 import { Text } from 'troika-three-text'
 import { MultiplayerClient, type MultiplayerKinematics } from './MultiplayerClient.ts'
+import { InGameChat } from './InGameChat.ts'
 
 export class CarPhysicsApp {
   private readonly scene = new THREE.Scene()
@@ -72,6 +73,7 @@ export class CarPhysicsApp {
   private readonly _navTmpFwd = new THREE.Vector3()
   private readonly _nameBillboardInv = new THREE.Quaternion()
   private navArrowRouteWasActive = false
+  private fallRespawnY = Number.NEGATIVE_INFINITY
   private carWheels: THREE.Object3D[] = []
 
   private readonly hudMpEl: HTMLElement | null
@@ -98,7 +100,7 @@ export class CarPhysicsApp {
       group: THREE.Group
       carVisual: THREE.Group
       hasPacket: boolean
-      vehicle: 1 | 2 | 3
+      vehicle: 1 | 2 | 3 | 4 | 5
       nameLabel: Text
       p: THREE.Vector3
       q: THREE.Quaternion
@@ -118,7 +120,7 @@ export class CarPhysicsApp {
     }
   >()
   private readonly mpGltfLoader = new GLTFLoader()
-  private readonly remoteCarTemplate = new Map<1 | 2 | 3, THREE.Group>()
+  private readonly remoteCarTemplate = new Map<1 | 2 | 3 | 4 | 5, THREE.Group>()
   /** Troika label above the local car in multiplayer. */
   private localPlayerNameLabel: Text | null = null
   private mpSendAcc = 0
@@ -162,6 +164,7 @@ export class CarPhysicsApp {
   private readonly pausePanelOptionsEl: HTMLElement
   private readonly pauseSoundToggleEl: HTMLButtonElement
   private readonly pauseSoundToggleTextEl: HTMLElement
+  private readonly chatUi: InGameChat
 
   private paused = false
 
@@ -170,8 +173,7 @@ export class CarPhysicsApp {
   constructor(canvas: HTMLCanvasElement) {
     this.scene.background = null
 
-    this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 24_000)
-    this.camera.position.set(0, 3.5, 9)
+    this.camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.1, 24_000)
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -236,13 +238,16 @@ export class CarPhysicsApp {
     /* Warm atmospheric haze for long sunset sightlines. */
     this.scene.fog = new THREE.FogExp2(0xcaa58d, 0.00014)
 
+    const isMobileView = window.matchMedia('(hover: none) and (pointer: coarse)').matches
     this.cameraFollower = new GtaStyleVehicleCamera(this.camera, canvas, {
       pivotLocal: new THREE.Vector3(0, 0.45, 0),
       defaultPitch: 0.25,
-      defaultDistance: 9,
+      defaultDistance: 12,
       defaultYawRest: CarConfig.CAMERA_DEFAULT_YAW_BIAS,
       /** Chase cam soft floor: pivot + this (more negative = lower allowed camera on dips). */
       minCameraY: -3.5,
+      baseFov: isMobileView ? 80 : 60,
+      maxFovAdd: 0,
     })
 
     if (import.meta.env.DEV) {
@@ -274,6 +279,12 @@ export class CarPhysicsApp {
     const pauseQuit = document.getElementById('pause-quit')
     const pauseSoundToggle = document.getElementById('pause-sound-toggle')
     const pauseOptionsBack = document.getElementById('pause-options-back')
+    const chatRoot = document.getElementById('chat-root')
+    const chatLog = document.getElementById('chat-log')
+    const chatComposer = document.getElementById('chat-composer')
+    const chatInput = document.getElementById('chat-input')
+    const chatMobileBtn = document.getElementById('chat-mobile-btn')
+    const chatNotifyDot = document.getElementById('chat-notify-dot')
     if (
       !hudWrap ||
       !hudCheckpointValue ||
@@ -292,7 +303,13 @@ export class CarPhysicsApp {
       !pauseOptions ||
       !pauseQuit ||
       !pauseSoundToggle ||
-      !pauseOptionsBack
+      !pauseOptionsBack ||
+      !chatRoot ||
+      !chatLog ||
+      !chatComposer ||
+      !chatNotifyDot ||
+      !(chatInput instanceof HTMLInputElement) ||
+      !(chatMobileBtn instanceof HTMLButtonElement)
     ) {
       throw new Error('Missing HUD / pause / game-over elements in index.html')
     }
@@ -311,6 +328,21 @@ export class CarPhysicsApp {
     const pauseSoundToggleText = this.pauseSoundToggleEl.querySelector('.pause-switch-text')
     if (!pauseSoundToggleText) throw new Error('Missing .pause-switch-text in pause sound toggle.')
     this.pauseSoundToggleTextEl = pauseSoundToggleText as HTMLElement
+    this.chatUi = new InGameChat({
+      root: chatRoot,
+      logEl: chatLog,
+      composerEl: chatComposer,
+      inputEl: chatInput,
+      mobileBtn: chatMobileBtn,
+      notifyDotEl: chatNotifyDot,
+      localName: CarConfig.getSessionMultiplayerDisplayName() || 'You',
+      sendFn: (text: string) => {
+        const c = this.mp
+        if (!c || !c.connected || !CarConfig.isSessionMultiplayer()) return false
+        return c.sendChat(text)
+      },
+    })
+    this.chatUi.setEnabled(false)
     gameOverRestart.addEventListener('click', () => {
       window.location.reload()
     })
@@ -360,10 +392,15 @@ export class CarPhysicsApp {
       ? new DesertTerrainGround(this.world, this.scene, terrainMat)
       : new FlatGround(this.world, this.scene, floorMat)
     this.driveGround = ground
+    const surfaceY = ground.heightAt(0, 0)
+    const boundaryHalfExtent = CarConfig.USE_DESERT_TERRAIN ? CarConfig.TERRAIN_HALF_EXTENT : CarConfig.GROUND_HALF_EXTENT_XZ
+    this.addBoundaryRingCollider(boundaryHalfExtent, surfaceY)
+    this.fallRespawnY = surfaceY - CarConfig.FALL_RESPAWN_BELOW_SURFACE_M
 
     if (CarConfig.USE_DESERT_TERRAIN && ground instanceof DesertTerrainGround) {
       const extent = CarConfig.TERRAIN_HALF_EXTENT * 2
       const pondY = ground.terrainMinY + CarConfig.POND_SURFACE_ABOVE_MIN_Y
+      this.fallRespawnY = pondY - CarConfig.FALL_RESPAWN_BELOW_WATER_M
       const waterNormals = await loadWaterNormalMap()
       const waterGeom = new THREE.PlaneGeometry(extent, extent)
       const water = new Water(waterGeom, {
@@ -385,7 +422,6 @@ export class CarPhysicsApp {
       this.desertWater = water
     }
 
-    const surfaceY = ground.heightAt(0, 0)
     let spawnX = 0
     let spawnZ = 0
     let spawnY = surfaceY + CarConfig.SPAWN_Y
@@ -527,7 +563,7 @@ export class CarPhysicsApp {
     }
 
     const jeepRoot = chassisGltf.scene
-    jeepRoot.scale.setScalar(CarConfig.JEEP_SCALE)
+    jeepRoot.scale.setScalar(CarConfig.activeChassisScale)
 
     const car = new THREE.Group()
     car.position.set(spawnX, spawnY, spawnZ)
@@ -548,6 +584,17 @@ export class CarPhysicsApp {
       chassisOrigin,
     )
     const wheelsVisual = CarGeometry.addTyresToCar(car, tyreGltf.scene, halfExtents, chassisOrigin)
+    // If scaling/tyre fit changes make the assembled car intersect terrain at spawn, lift once before
+    // creating the Rapier body to avoid a visible "jump" on the first physics frames.
+    car.updateMatrixWorld(true)
+    const spawnGroundY = ground.heightAt(spawnX, spawnZ)
+    const spawnBox = new THREE.Box3().setFromObject(car)
+    const spawnLift = spawnGroundY + 0.04 - spawnBox.min.y
+    if (spawnLift > 0) {
+      car.position.y += spawnLift
+      spawnY += spawnLift
+      car.updateMatrixWorld(true)
+    }
     const forwardAlongX = halfExtents.x >= halfExtents.z
     const frontBias = CarConfig.CHASSIS_FRONT_WEIGHT_BIAS_M
     const lowerBias = CarConfig.CHASSIS_WEIGHT_LOWER_M
@@ -565,16 +612,16 @@ export class CarPhysicsApp {
     if (CarConfig.activeChassisUrl === CarConfig.CHASSIS_2_MODEL_URL) {
       this.clampLocalChassis2Emissive(jeepRoot)
     }
-    this.applyReadableVehiclePaint(car)
+    this.applyReadableVehiclePaint(car, CarConfig.activeVehicleChoice)
 
     const pondZone =
       CarConfig.USE_DESERT_TERRAIN && ground instanceof DesertTerrainGround
         ? {
-            surfaceY: ground.terrainMinY + CarConfig.POND_SURFACE_ABOVE_MIN_Y,
-            halfExtent: CarConfig.TERRAIN_HALF_EXTENT,
-            centerX: CarConfig.POND_CENTER_X,
-            centerZ: CarConfig.POND_CENTER_Z,
-          }
+          surfaceY: ground.terrainMinY + CarConfig.POND_SURFACE_ABOVE_MIN_Y,
+          halfExtent: CarConfig.TERRAIN_HALF_EXTENT,
+          centerX: CarConfig.POND_CENTER_X,
+          centerZ: CarConfig.POND_CENTER_Z,
+        }
         : null
 
     this.raycastCar = new RaycastCar(
@@ -667,6 +714,18 @@ export class CarPhysicsApp {
     if (!fromEnterOrT && !fromDriveKey) return
 
     if (fromEnterOrT) event.preventDefault()
+    this.raceTimerStartMs = performance.now()
+  }
+
+  /** Start race clock on first non-zero live input (covers touch joystick too). */
+  private startRaceTimerFromMovementInput(): void {
+    if (!this.raceHudReady || CarConfig.SCENE_MODE !== 'driving') return
+    if (this.paused) return
+    if (this.raycastCar === null) return
+    if (CarConfig.isSessionMultiplayer()) return
+    if (this.raceFinished || this.raceTimerStartMs !== null) return
+    const moving = Math.abs(this.movement.forward) > 0.08 || Math.abs(this.movement.right) > 0.08
+    if (!moving) return
     this.raceTimerStartMs = performance.now()
   }
 
@@ -806,7 +865,9 @@ export class CarPhysicsApp {
    * next to exp2 fog + ACES exposure. Keep the same maps and base `color`; only disable fog on the vehicle,
    * turn off glass-like transmission, and slightly tighten roughness so paint matches the sun key.
    */
-  private applyReadableVehiclePaint(root: THREE.Object3D): void {
+  private applyReadableVehiclePaint(root: THREE.Object3D, vehicle: 1 | 2 | 3 | 4 | 5): void {
+    const isVehicle4 = vehicle === 4 || vehicle === 5
+    const isVehicle5 = vehicle === 5
     root.traverse((o) => {
       const mesh = o as THREE.Mesh
       if (!mesh.isMesh || !mesh.material) return
@@ -819,14 +880,33 @@ export class CarPhysicsApp {
           mat.transmissionMap = null
           mat.sheen = 0
           mat.iridescence = 0
-          mat.clearcoat = Math.min(mat.clearcoat, 0.12)
-          mat.roughness = THREE.MathUtils.clamp(mat.roughness * 0.88 + 0.04, 0.1, 1)
-          mat.metalness = THREE.MathUtils.clamp(mat.metalness, 0, 1)
+          mat.clearcoat = Math.min(mat.clearcoat, isVehicle4 ? 0.08 : 0.12)
+          mat.roughness = THREE.MathUtils.clamp(
+            mat.roughness * (isVehicle4 ? 0.95 : 0.88) + (isVehicle4 ? 0.14 : 0.04),
+            0.1,
+            1,
+          )
+          mat.metalness = isVehicle4
+            ? THREE.MathUtils.clamp(mat.metalness * 0.3, 0, 0.22)
+            : THREE.MathUtils.clamp(mat.metalness, 0, 1)
+          if (isVehicle5) {
+              mat.depthWrite = true;
+            }
         } else if (mat instanceof THREE.MeshStandardMaterial) {
           mat.fog = false
-          mat.roughness = THREE.MathUtils.clamp(mat.roughness * 0.88 + 0.04, 0.1, 1)
+          mat.roughness = THREE.MathUtils.clamp(
+            mat.roughness * (isVehicle4 ? 0.95 : 0.88) + (isVehicle4 ? 0.14 : 0.04),
+            0.1,
+            1,
+          )
+          if (isVehicle4) {
+            mat.metalness = THREE.MathUtils.clamp(mat.metalness * 0.35, 0, 0.24)
+          }
+          if (isVehicle5) {
+            mat.depthWrite = true;
+          }
         } else if ('fog' in mat && typeof (mat as { fog?: boolean }).fog === 'boolean') {
-          ;(mat as { fog: boolean }).fog = false
+          ; (mat as { fog: boolean }).fog = false
         }
       }
     })
@@ -856,8 +936,8 @@ export class CarPhysicsApp {
     })
   }
 
-  private applyRemotePlayerVisualTint(root: THREE.Object3D, hue: number, vehicle: 1 | 2 | 3): void {
-    const dimChassis = vehicle === 2 || vehicle === 3
+  private applyRemotePlayerVisualTint(root: THREE.Object3D, hue: number, vehicle: 1 | 2 | 3 | 4 | 5): void {
+    const dimChassis = vehicle === 2 || vehicle === 3 || vehicle === 4 || vehicle === 5
     const emissive = new THREE.Color().setHSL(
       hue,
       dimChassis ? 0.2 : 0.38,
@@ -940,7 +1020,7 @@ export class CarPhysicsApp {
     })
   }
 
-  private async getRemoteCarVisualClone(vehicle: 1 | 2 | 3): Promise<THREE.Group> {
+  private async getRemoteCarVisualClone(vehicle: 1 | 2 | 3 | 4 | 5): Promise<THREE.Group> {
     let src = this.remoteCarTemplate.get(vehicle)
     if (src == null) {
       const chassisUrl =
@@ -948,19 +1028,27 @@ export class CarPhysicsApp {
           ? CarConfig.CHASSIS_1_MODEL_URL
           : vehicle === 2
             ? CarConfig.CHASSIS_2_MODEL_URL
-            : CarConfig.CHASSIS_3_MODEL_URL
+            : vehicle === 3
+              ? CarConfig.CHASSIS_3_MODEL_URL
+              : vehicle === 4
+                ? CarConfig.CHASSIS_4_MODEL_URL
+                : CarConfig.CHASSIS_5_MODEL_URL
       const wheelUrl =
         vehicle === 1
           ? CarConfig.WHEEL_MODEL_URL_1
           : vehicle === 2
             ? CarConfig.WHEEL_MODEL_URL_2
-            : CarConfig.WHEEL_MODEL_URL_3
+            : vehicle === 3
+              ? CarConfig.WHEEL_MODEL_URL_3
+              : vehicle === 4
+                ? CarConfig.WHEEL_MODEL_URL_4
+                : CarConfig.WHEEL_MODEL_URL_5
       const [chassisGltf, tyreGltf] = await Promise.all([
         this.mpGltfLoader.loadAsync(chassisUrl),
         this.mpGltfLoader.loadAsync(wheelUrl),
       ])
       const chassisRoot = chassisGltf.scene
-      chassisRoot.scale.setScalar(CarConfig.JEEP_SCALE)
+      chassisRoot.scale.setScalar(CarConfig.chassisScaleForUrl(chassisUrl))
       const car = new THREE.Group()
       car.add(chassisRoot)
       const { halfExtents, centerOffset } = CarGeometry.computeChassisCuboid(chassisRoot, car)
@@ -976,7 +1064,7 @@ export class CarPhysicsApp {
           m.receiveShadow = true
         }
       })
-      this.applyReadableVehiclePaint(car)
+      this.applyReadableVehiclePaint(car, vehicle)
       this.remoteCarTemplate.set(vehicle, car)
       src = car
     }
@@ -1007,7 +1095,7 @@ export class CarPhysicsApp {
     }
   }
 
-  private async expectRemotePlayer(id: string, vehicle: 1 | 2 | 3, displayName: string): Promise<void> {
+  private async expectRemotePlayer(id: string, vehicle: 1 | 2 | 3 | 4 | 5, displayName: string): Promise<void> {
     if (this.mp && id === this.mp.localId) return
     if (this.raycastCar == null) return
     if (this.mpRemotes.has(id)) return
@@ -1053,7 +1141,7 @@ export class CarPhysicsApp {
         const m = obj.material
         if (Array.isArray(m)) {
           for (const mm of m) {
-            ;(mm as THREE.Material).dispose()
+            ; (mm as THREE.Material).dispose()
           }
         } else m?.dispose()
       }
@@ -1153,6 +1241,7 @@ export class CarPhysicsApp {
   }
 
   private tearDownMultiplayer(): void {
+    this.chatUi.setEnabled(false)
     this.disposeLocalPlayerNameplate()
     for (const id of [...this.mpRemotes.keys()]) {
       this.removeRemotePlayer(id)
@@ -1173,6 +1262,7 @@ export class CarPhysicsApp {
     const peerIds = CarConfig.takeGameStartPeerIds()
     this.tearDownMultiplayer()
     if (pre == null) {
+      this.chatUi.setEnabled(false)
       this.syncHudMultiplayerCount()
       return
     }
@@ -1215,6 +1305,11 @@ export class CarPhysicsApp {
       }, 2000)
       this.tearDownMultiplayer()
     }
+    this.mp.onChat = (fromId, fromName, message) => {
+      if (fromId === this.mp?.localId) return
+      this.chatUi.addRemoteMessage(fromName, message)
+    }
+    this.chatUi.setEnabled(true)
     this.syncHudMultiplayerCount()
     void this.attachLocalPlayerNameplate()
   }
@@ -1501,9 +1596,9 @@ export class CarPhysicsApp {
       sxz <= start
         ? 0
         : Math.min(
-            CarConfig.STABILITY_ANG_DAMP_MAX_EXTRA,
-            (sxz - start) * CarConfig.STABILITY_ANG_DAMP_PER_MS,
-          )
+          CarConfig.STABILITY_ANG_DAMP_MAX_EXTRA,
+          (sxz - start) * CarConfig.STABILITY_ANG_DAMP_PER_MS,
+        )
     this.raycastCar.chassisBody.setAngularDamping(CarConfig.CHASSIS_ANGULAR_DAMPING + extra)
   }
 
@@ -1520,7 +1615,7 @@ export class CarPhysicsApp {
     this.sunLight.target.updateMatrixWorld(true)
 
     this.skySunDir.copy(this.sunOffsetWorld).normalize()
-    ;(this.sky.material as THREE.ShaderMaterial).uniforms['sunPosition'].value.copy(this.skySunDir)
+      ; (this.sky.material as THREE.ShaderMaterial).uniforms['sunPosition'].value.copy(this.skySunDir)
     if (this.desertWater) {
       this.desertWater.material.uniforms['sunDirection'].value.copy(this.skySunDir)
     }
@@ -1559,6 +1654,7 @@ export class CarPhysicsApp {
 
     this.updateResetHistoryAndSpawn(dt)
     this.updateFlipAutoReset(dt)
+    this.startRaceTimerFromMovementInput()
 
     this.updateMpRemotesInterpolationVisualsBillboards(dt)
     this.syncMpRemoteDynamicProxyBodies(dt)
@@ -1570,6 +1666,11 @@ export class CarPhysicsApp {
 
     this.raycastCar.enforceGroundSpeedCap(this.mpRemotes.size > 0 ? 1.38 : 1)
     this.raycastCar.syncGroupFromPhysics()
+    const bodyY = this.raycastCar.chassisBody.translation().y
+    if (bodyY < this.fallRespawnY) {
+      this.raycastCar.applySpawnReset()
+      this.raycastCar.syncGroupFromPhysics()
+    }
     this.raycastCar.updateWheelMeshes(dt)
     this.updateMpLocalSendAndHud(dt)
     this.updateAudio(dt)
@@ -1577,7 +1678,7 @@ export class CarPhysicsApp {
     this.updateHighSpeedStability()
     this.updateDrivingHud()
     this.updateSunLight()
-    ;(this.sky.material as THREE.ShaderMaterial).uniforms['time'].value += dt
+      ; (this.sky.material as THREE.ShaderMaterial).uniforms['time'].value += dt
     if (this.desertWater) {
       this.desertWater.material.uniforms['time'].value += dt * CarConfig.POND_WATER_SHADER_TIME_SCALE
     }
@@ -1699,6 +1800,58 @@ export class CarPhysicsApp {
     const y = terrain.heightAt(best.x, best.z) + CarConfig.SPAWN_Y
     const yaw = Math.atan2(target.x - best.x, target.z - best.z)
     return { x: best.x, y, z: best.z, yaw }
+  }
+
+  private addBoundaryRingCollider(halfExtent: number, surfaceY: number): void {
+    const inset = CarConfig.BOUNDARY_RING_INSET_M
+    const thickness = CarConfig.BOUNDARY_RING_THICKNESS_M
+    const segments = Math.max(12, CarConfig.BOUNDARY_RING_SEGMENTS | 0)
+    const rOuter = Math.max(12, halfExtent - inset)
+    const rInner = Math.max(4, rOuter - Math.max(1, thickness))
+    const yTop = surfaceY + CarConfig.BOUNDARY_RING_TOP_ABOVE_SURFACE_M
+    const yBottom = surfaceY - CarConfig.BOUNDARY_RING_BOTTOM_BELOW_SURFACE_M
+
+    const verts: number[] = []
+    const inds: number[] = []
+    const pushV = (x: number, y: number, z: number): number => {
+      const idx = (verts.length / 3) | 0
+      verts.push(x, y, z)
+      return idx
+    }
+
+    for (let i = 0; i < segments; i++) {
+      const a0 = (i / segments) * Math.PI * 2
+      const a1 = ((i + 1) / segments) * Math.PI * 2
+      const c0 = Math.cos(a0)
+      const s0 = Math.sin(a0)
+      const c1 = Math.cos(a1)
+      const s1 = Math.sin(a1)
+
+      const ot0 = pushV(c0 * rOuter, yTop, s0 * rOuter)
+      const ob0 = pushV(c0 * rOuter, yBottom, s0 * rOuter)
+      const ot1 = pushV(c1 * rOuter, yTop, s1 * rOuter)
+      const ob1 = pushV(c1 * rOuter, yBottom, s1 * rOuter)
+
+      const it0 = pushV(c0 * rInner, yTop, s0 * rInner)
+      const ib0 = pushV(c0 * rInner, yBottom, s0 * rInner)
+      const it1 = pushV(c1 * rInner, yTop, s1 * rInner)
+      const ib1 = pushV(c1 * rInner, yBottom, s1 * rInner)
+
+      // Outer side
+      inds.push(ot0, ob0, ot1, ot1, ob0, ob1)
+      // Inner side (faces toward center as requested)
+      inds.push(it0, it1, ib0, it1, ib1, ib0)
+      // Top cap
+      inds.push(ot0, ot1, it0, ot1, it1, it0)
+      // Bottom cap
+      inds.push(ob0, ib0, ob1, ob1, ib0, ib1)
+    }
+
+    const body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed())
+    const desc = RAPIER.ColliderDesc.trimesh(new Float32Array(verts), Uint32Array.from(inds))
+      .setFriction(0.85)
+      .setRestitution(0.02)
+    this.world.createCollider(desc, body)
   }
 
   private updateNavArrow(dt: number): void {
@@ -1974,7 +2127,11 @@ export class CarPhysicsApp {
     const r = this.raycastCar.chassisBody.rotation()
     this._flipBodyQuat.set(r.x, r.y, r.z, r.w)
     this._flipChassisUpWorld.set(0, 1, 0).applyQuaternion(this._flipBodyQuat)
-    if (this._flipChassisUpWorld.y <= CarConfig.AUTO_RESET_FLIP_UP_Y_MAX) {
+    let grounded = 0
+    for (let i = 0; i < 4; i++) grounded += this.raycastCar.wheelOnGround(i) ? 1 : 0
+    const upsideDown = this._flipChassisUpWorld.y <= CarConfig.AUTO_RESET_FLIP_UP_Y_MAX
+    const upsetNoGround = grounded === 0 && this._flipChassisUpWorld.y <= CarConfig.AUTO_RESET_UPSET_UP_Y_MAX
+    if (upsideDown || upsetNoGround) {
       this.flipAutoResetHoldT += dt
       if (this.flipAutoResetHoldT >= CarConfig.AUTO_RESET_FLIP_HOLD_S) {
         this.flipAutoResetHoldT = 0

@@ -23,6 +23,10 @@ body {
   font-family: Gunplay, Impact, 'Arial Narrow', sans-serif;
   font-size: 16px;
   line-height: 1.2;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: none;
 }
 
 #canvas {
@@ -32,6 +36,23 @@ body {
   touch-action: none;
   /* Do not sit above the start / name modals: enabled when the game is running (main.ts). */
   pointer-events: none;
+}
+
+img,
+button,
+canvas,
+div,
+span,
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .mp-race-countdown {
@@ -174,6 +195,8 @@ body {
   border-radius: 6px;
   box-shadow: 0 0.5rem 2rem rgba(0, 0, 0, 0.55);
   transform: rotate3d(0, 1, 0, -15deg);
+  position: relative;
+  left: -1rem;
 }
 
 .mp-name-modal__title {
@@ -218,6 +241,51 @@ body {
   cursor: text;
 }
 
+.mobile-controls {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  z-index: 21000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.mobile-joy-zone {
+  width: min(34vw, 170px);
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  background: radial-gradient(circle at 42% 38%, rgba(255, 255, 255, 0.16), rgba(8, 10, 14, 0.42));
+  box-shadow: inset 0 0 26px rgba(0, 0, 0, 0.35);
+  position: relative;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.mobile-joy-knob {
+  width: 44%;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, rgba(244, 246, 250, 0.95), rgba(154, 164, 178, 0.9));
+  box-shadow:
+    0 4px 14px rgba(0, 0, 0, 0.45),
+    inset 0 1px 2px rgba(255, 255, 255, 0.7);
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  body.game-running .mobile-controls {
+    display: flex;
+  }
+}
+
 .mp-name-modal__err {
   margin: 0.4rem 0 0;
   min-height: 1.2em;
@@ -254,6 +322,8 @@ body {
   -webkit-perspective: 150px;
   /* Chrome, Safari, Opera  */
   perspective: 300px;
+  position: relative;
+  left: -1rem;
 }
 
 .start-title {
@@ -442,6 +512,8 @@ body {
   text-align: center;
   -webkit-perspective: 150px;
   perspective: 300px;
+  position: relative;
+  left: -1rem;
 }
 
 .loading-title {
@@ -624,6 +696,151 @@ body {
     0.03em 0.03em 0 #000;
 }
 
+.chat-root {
+  position: fixed;
+  left: 14px;
+  bottom: 16px;
+  z-index: 12050;
+  width: min(64vw, 24rem);
+  pointer-events: none;
+}
+
+body.mp-lobby .chat-root {
+  z-index: 17050;
+}
+
+.chat-log {
+  display: none;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-height: min(26vh, 13rem);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 0.22rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(220, 228, 242, 0.45) rgba(0, 0, 0, 0.2);
+}
+
+.chat-root.chat-root--open .chat-log {
+  display: flex;
+}
+
+.chat-line {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0.2rem 0.42rem;
+  border-radius: 4px;
+  background: rgba(8, 10, 14, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #eaf1ff;
+  font-size: clamp(0.68rem, 1.35vw, 0.85rem);
+  line-height: 1.25;
+  letter-spacing: 0.03em;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.75);
+  word-break: break-word;
+}
+
+.chat-line--self {
+  background: rgba(22, 45, 78, 0.72);
+}
+
+.chat-composer {
+  margin-top: 0.45rem;
+  pointer-events: auto;
+}
+
+.chat-input {
+  width: min(64vw, 24rem);
+  box-sizing: border-box;
+  padding: 0.42rem 0.56rem;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(8, 10, 14, 0.88);
+  color: #f1f5fb;
+  font-family: Gunplay, Impact, 'Arial Narrow', sans-serif;
+  font-size: clamp(0.78rem, 1.55vw, 0.92rem);
+  letter-spacing: 0.03em;
+  outline: none;
+  pointer-events: auto;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.chat-mobile-btn {
+  display: none;
+  margin-top: 0.45rem;
+  width: 2.7rem;
+  height: 2.7rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.98), rgba(235, 240, 248, 0.98));
+  box-shadow:
+    0 10px 22px rgba(0, 0, 0, 0.36),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(4px);
+  color: #11161f;
+  font-family: Gunplay, Impact, 'Arial Narrow', sans-serif;
+  font-size: 0.88rem;
+  letter-spacing: 0.04em;
+  pointer-events: auto;
+  position: relative;
+  transition:
+    transform 120ms ease,
+    box-shadow 160ms ease,
+    background 180ms ease;
+}
+
+.chat-mobile-btn-icon {
+  width: 1.6rem;
+  height: 1.6rem;
+  display: inline-block;
+  background: #11161f;
+  -webkit-mask-image: url('/chat-svgrepo-com.svg');
+  mask-image: url('/chat-svgrepo-com.svg');
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  pointer-events: none;
+}
+
+body.game-running .chat-mobile-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+body.mp-lobby .chat-mobile-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chat-mobile-btn:hover {
+  background: linear-gradient(165deg, rgba(255, 255, 255, 1), rgba(242, 246, 252, 1));
+  box-shadow:
+    0 12px 26px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.chat-mobile-btn:active,
+.chat-mobile-btn[aria-pressed='true'] {
+  transform: translateY(1px) scale(0.985);
+}
+
+.chat-notify-dot {
+  position: absolute;
+  right: 0.38rem;
+  top: 0.28rem;
+  width: 0.52rem;
+  height: 0.52rem;
+  border-radius: 999px;
+  background: #ff5050;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+}
+
 /* three.js Stats — bottom-left (class added in CarPhysicsApp) */
 .stats-panel {
   position: fixed !important;
@@ -671,6 +888,8 @@ body {
   max-width: 23rem;
   -webkit-perspective: 150px;
   perspective: 300px;
+  position: relative;
+  left: -1rem;
 }
 
 .pause-title {
@@ -811,13 +1030,13 @@ body {
 
 .start-vehicle-track {
   display: flex;
-  width: 300%;
+  width: 500%;
   transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
   will-change: transform;
 }
 
 .start-vehicle-item {
-  flex: 0 0 33.3333%;
+  flex: 0 0 20%;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -866,6 +1085,8 @@ body {
   max-width: 24rem;
   -webkit-perspective: 150px;
   perspective: 300px;
+  position: relative;
+  left: -1rem;
 }
 
 .game-over-title {

@@ -173,13 +173,14 @@ export class CarGeometry {
     const forwardAlongX = hx >= hz
     const lateralHalf = forwardAlongX ? hz : hx
     const tp = placementOverride ?? CarConfig.tyrePlacementForActiveChassis()
-    const targetTyreSize = lateralHalf * 2 * tp.widthFrac
-    const scale = targetTyreSize / ref
-    proto.scale.setScalar(scale)
+    const baseTargetTyreSize = lateralHalf * 2 * tp.widthFrac
+    const baseScale = baseTargetTyreSize / ref
+    proto.scale.setScalar(baseScale)
     proto.updateMatrixWorld(true)
     const chassisBottomY = centerOffset.y - halfExtents.y
 
-    const lateralSpan = lateralHalf * tp.lateralFrac
+    const frontLateralSpan = lateralHalf * (tp.frontLateralFrac ?? tp.lateralFrac)
+    const rearLateralSpan = lateralHalf * (tp.rearLateralFrac ?? tp.lateralFrac)
     let alongFront: number
     let alongRear: number
     if (forwardAlongX) {
@@ -201,8 +202,11 @@ export class CarGeometry {
 
     for (const slot of tyreLayout) {
       const along = slot.axle === 'front' ? alongFront : alongRear
+      const lateralSpan = slot.axle === 'front' ? frontLateralSpan : rearLateralSpan
       const lat = slot.lateralSign * lateralSpan
       const tyre = proto.clone(true)
+      const axleWidthMul = slot.axle === 'front' ? (tp.frontWidthMul ?? 1) : (tp.rearWidthMul ?? 1)
+      tyre.scale.multiplyScalar(axleWidthMul)
       if (forwardAlongX) {
         tyre.position.set(along, 0, centerOffset.z + lat)
       } else {
@@ -210,7 +214,8 @@ export class CarGeometry {
       }
       tyre.updateMatrixWorld(true)
       const b = new THREE.Box3().setFromObject(tyre)
-      tyre.position.y += chassisBottomY - b.min.y - tp.extraDropY
+      const axleExtraDropY = slot.axle === 'front' ? (tp.frontExtraDropY ?? tp.extraDropY) : (tp.rearExtraDropY ?? tp.extraDropY)
+      tyre.position.y += chassisBottomY - b.min.y - axleExtraDropY
       if (slot.lateralSign < 0) {
         tyre.rotateY(tp.leftYaw)
       }

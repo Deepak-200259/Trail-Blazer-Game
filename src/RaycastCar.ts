@@ -49,6 +49,15 @@ export class RaycastCar {
 
   private readonly chassisHalfY: number
   private readonly pond: RaycastCarPondZone | null
+  private readonly forwardAlongX: boolean
+  private readonly vehicleChoice: 1 | 2 | 3 | 4 | 5
+  private readonly engineForceMult: number
+  private readonly suspensionRestMult: number
+  private readonly suspensionTravelMult: number
+  private readonly suspensionDampMult: number
+  private readonly rightingTorqueImpulse: number
+  private readonly tmpForwardWorld = new THREE.Vector3()
+  private readonly tmpBodyQ = new THREE.Quaternion()
 
   constructor(
     world: RAPIER.World,
@@ -63,6 +72,13 @@ export class RaycastCar {
     this.wheelsVisual = wheelsVisual
     this.chassisHalfY = halfExtents.y
     this.pond = pond
+    this.forwardAlongX = forwardAlongX
+    this.vehicleChoice = CarConfig.activeVehicleChoice
+    this.engineForceMult = this.vehicleChoice === 2 ? CarConfig.VEHICLE2_ENGINE_FORCE_MULT : 1
+    this.suspensionRestMult = this.vehicleChoice === 2 ? CarConfig.VEHICLE2_SUSPENSION_REST_MULT : 1
+    this.suspensionTravelMult = this.vehicleChoice === 2 ? CarConfig.VEHICLE2_SUSPENSION_TRAVEL_MULT : 1
+    this.suspensionDampMult = this.vehicleChoice === 2 ? CarConfig.VEHICLE2_SUSPENSION_DAMP_MULT : 1
+    this.rightingTorqueImpulse = this.vehicleChoice === 2 ? CarConfig.VEHICLE2_RIGHTING_TORQUE_IMPULSE : 0
 
     const chassisDesc = RAPIER.RigidBodyDesc.dynamic()
       .setTranslation(car.position.x, car.position.y, car.position.z)
@@ -88,13 +104,13 @@ export class RaycastCar {
         { x: connection.x, y: connection.y, z: connection.z },
         wheelDirection,
         wheelAxle,
-        CarConfig.SUSPENSION_REST_LENGTH,
+        CarConfig.SUSPENSION_REST_LENGTH * this.suspensionRestMult,
         r,
       )
       this.vehicleController.setWheelSuspensionStiffness(i, 32)
-      this.vehicleController.setWheelSuspensionCompression(i, 5.5)
-      this.vehicleController.setWheelSuspensionRelaxation(i, 7.5)
-      this.vehicleController.setWheelMaxSuspensionTravel(i, 0.22)
+      this.vehicleController.setWheelSuspensionCompression(i, 5.5 * this.suspensionDampMult)
+      this.vehicleController.setWheelSuspensionRelaxation(i, 7.5 * this.suspensionDampMult)
+      this.vehicleController.setWheelMaxSuspensionTravel(i, 0.22 * this.suspensionTravelMult)
       this.vehicleController.setWheelMaxSuspensionForce(i, 120_000)
       this.vehicleController.setWheelFrictionSlip(i, CarConfig.WHEEL_FRICTION_SLIP)
       this.vehicleController.setWheelSideFrictionStiffness(i, CarConfig.WHEEL_SIDE_FRICTION_STIFFNESS)
@@ -209,7 +225,7 @@ export class RaycastCar {
     const wade = this.pondSubmergeFactor()
     this.chassisBody.setLinearDamping(0.08 + wade * CarConfig.POND_LINEAR_DAMP_EXTRA)
 
-    const engineForce = input.forward * CarConfig.MAX_ENGINE_FORCE
+    const engineForce = input.forward * CarConfig.MAX_ENGINE_FORCE * this.engineForceMult
     const engineMul = THREE.MathUtils.lerp(1, CarConfig.POND_MIN_ENGINE_MULT, wade)
     const perWheel = engineForce * 0.5 * engineMul
     for (let i = 0; i < 4; i++) {
@@ -245,6 +261,24 @@ export class RaycastCar {
 
     this.lastForwardInput = input.forward
     this.lastEngineForce = engineForce
+
+    if (this.rightingTorqueImpulse > 0 && input.right !== 0) {
+      const rot = this.chassisBody.rotation()
+      this.tmpBodyQ.set(rot.x, rot.y, rot.z, rot.w)
+      this.tmpForwardWorld
+        .set(this.forwardAlongX ? 1 : 0, 0, this.forwardAlongX ? 0 : -1)
+        .applyQuaternion(this.tmpBodyQ)
+      const bodyUpY = new THREE.Vector3(0, 1, 0).applyQuaternion(this.tmpBodyQ).y
+      // When mostly upside-down, steering left/right also applies roll impulse to help self-right.
+      if (bodyUpY < -0.15) {
+        const s = Math.sign(input.right)
+        const t = this.rightingTorqueImpulse * s
+        this.chassisBody.applyTorqueImpulse(
+          new RAPIER.Vector3(this.tmpForwardWorld.x * t, this.tmpForwardWorld.y * t, this.tmpForwardWorld.z * t),
+          true,
+        )
+      }
+    }
   }
 
   updateWheelMeshes(dt: number): void {

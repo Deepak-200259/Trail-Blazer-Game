@@ -218,15 +218,21 @@ export class GtaStyleVehicleCamera {
 
     const minPitchFromGround = this.computeMinPitchForGround(this.distance)
 
+    // Track full chassis facing (including uphill/downhill pitch) so the chase camera stays
+    // behind the car relative to its heading, not only behind world-horizontal projection.
     this.forwardFlat.set(1, 0, 0).applyQuaternion(this.target.quaternion)
-    this.forwardFlat.y = 0
     if (this.forwardFlat.lengthSq() < 1e-8) {
       this.forwardFlat.set(0, 0, 1)
     } else {
       this.forwardFlat.normalize()
     }
     this.backFlat.copy(this.forwardFlat).multiplyScalar(-1)
-    this.rightFlat.crossVectors(this.worldUp, this.forwardFlat).normalize()
+    this.rightFlat.crossVectors(this.worldUp, this.forwardFlat)
+    if (this.rightFlat.lengthSq() < 1e-8) {
+      this.rightFlat.set(1, 0, 0)
+    } else {
+      this.rightFlat.normalize()
+    }
 
     let pitch = THREE.MathUtils.clamp(this.pitch, this.pitchMin, this.pitchMax)
     const cosY = Math.cos(this.yawOffset)
@@ -242,7 +248,9 @@ export class GtaStyleVehicleCamera {
 
     const cosP = Math.cos(pitch)
     const sinP = Math.sin(pitch)
-    this.dir.set(hnx * cosP, sinP, hnz * cosP).normalize()
+    this.dir
+      .set(hnx * cosP, this.backFlat.y * cosY * cosP + sinP, hnz * cosP)
+      .normalize()
 
     this.idealCamPos.copy(this.pivotWorld).addScaledVector(this.dir, this.distance)
     const lead = this.pivotLeadSeconds

@@ -20,6 +20,8 @@
             maxlength="20"
             spellcheck="false"
             autocomplete="off"
+            autocorrect="off"
+            autocapitalize="off"
             aria-describedby="mp-name-modal-err"
           />
           <p id="mp-name-modal-err" class="mp-name-modal__err" role="alert" hidden></p>
@@ -72,6 +74,14 @@
                   <img class="start-vehicle-thumb" src="/vehicle_3_thumbnail.png" alt="Wasteland Mk III preview" />
                   <span class="start-vehicle-name">Wasteland Mk III</span>
                 </div>
+                <div class="start-vehicle-item">
+                  <img class="start-vehicle-thumb" src="/vehicle_4_thumbnail.png" alt="Storm Reaper preview" />
+                  <span class="start-vehicle-name">Storm Reaper</span>
+                </div>
+                <div class="start-vehicle-item">
+                  <img class="start-vehicle-thumb" src="/Vehicle_5_thumbnail.png" alt="Raptor V preview" />
+                  <span class="start-vehicle-name">Raptor V</span>
+                </div>
               </div>
             </div>
             <button type="button" id="start-vehicle-next" class="start-vehicle-arrow" aria-label="Next vehicle">
@@ -106,9 +116,11 @@
           id="join-room-code"
           class="start-mp-input"
           type="text"
+          maxlength="6"
           placeholder="A1B2C3"
           spellcheck="false"
-          autocapitalize="characters"
+          autocorrect="off"
+          autocapitalize="off"
           autocomplete="off"
         />
         <p id="join-err" class="start-field-err" role="status" aria-live="polite"></p>
@@ -140,6 +152,14 @@
                 <div class="start-vehicle-item">
                   <img class="start-vehicle-thumb" src="/vehicle_3_thumbnail.png" alt="Wasteland Mk III preview" />
                   <span class="start-vehicle-name">Wasteland Mk III</span>
+                </div>
+                <div class="start-vehicle-item">
+                  <img class="start-vehicle-thumb" src="/vehicle_4_thumbnail.png" alt="Storm Reaper preview" />
+                  <span class="start-vehicle-name">Storm Reaper</span>
+                </div>
+                <div class="start-vehicle-item">
+                  <img class="start-vehicle-thumb" src="/Vehicle_5_thumbnail.png" alt="Raptor V preview" />
+                  <span class="start-vehicle-name">Raptor V</span>
                 </div>
               </div>
             </div>
@@ -175,6 +195,26 @@
       <p id="hud-controls-hint">WASD move · <kbd>R</kbd> reset</p>
     </div>
     <div id="hud-status" role="status" aria-live="polite"></div>
+    <div id="chat-root" class="chat-root" hidden>
+      <div id="chat-log" class="chat-log" aria-live="polite"></div>
+      <div id="chat-composer" class="chat-composer" hidden>
+        <input
+          id="chat-input"
+          class="chat-input"
+          type="text"
+          maxlength="140"
+          placeholder="Type message..."
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          spellcheck="false"
+        />
+      </div>
+      <button id="chat-mobile-btn" class="chat-mobile-btn" type="button" aria-pressed="false">
+        <span class="chat-mobile-btn-icon" aria-hidden="true"></span>
+        <span id="chat-notify-dot" class="chat-notify-dot" hidden></span>
+      </button>
+    </div>
     <div id="game-over-overlay" class="game-over-overlay" hidden>
       <div class="game-over-panel">
         <div class="game-over-title">GAME OVER</div>
@@ -201,6 +241,11 @@
           </button>
         </div>
         <button type="button" id="pause-options-back" class="pause-btn">Back</button>
+      </div>
+    </div>
+    <div id="mobile-controls" class="mobile-controls" aria-hidden="true">
+      <div id="mobile-joy-zone" class="mobile-joy-zone">
+        <div id="mobile-joy-knob" class="mobile-joy-knob"></div>
       </div>
     </div>
     <canvas id="canvas"></canvas>

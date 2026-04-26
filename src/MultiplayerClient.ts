@@ -1,7 +1,7 @@
 /**
  * WebSocket client for the game server: lobby/rooms, then in-game state relay. Browser `WebSocket` only.
  */
-export type MultiplayerVehicle = 1 | 2 | 3
+export type MultiplayerVehicle = 1 | 2 | 3 | 4 | 5
 
 export type MultiplayerKinematics = {
   readonly px: number
@@ -38,7 +38,7 @@ export function normalizeLobbyPlayer(p: {
       .trim()
       .slice(0, MAX_LOBBY_NAME_LEN) || 'Player'
   const vn = Number((p as { v?: unknown }).v)
-  const v: MultiplayerVehicle = vn === 3 ? 3 : vn === 2 ? 2 : 1
+  const v: MultiplayerVehicle = vn === 5 ? 5 : vn === 4 ? 4 : vn === 3 ? 3 : vn === 2 ? 2 : 1
   return {
     i: String(p.i ?? ''),
     v,
@@ -63,6 +63,7 @@ type ServerState = {
 }
 type ServerJoin = { t: 'join'; id: string }
 type ServerLeave = { t: 'leave'; id: string }
+type ServerChat = { t: 'chat'; i: string; n: string; m: string }
 
 export class MultiplayerClient {
   private ws: WebSocket | null = null
@@ -81,6 +82,7 @@ export class MultiplayerClient {
   /** `pl` is the full room roster (same as lobby) when the server supports it; use for names at game start. */
   onGameStart?: (peerIds: string[], pl: LobbyPlayer[]) => void
   onPeerKinematics?: (id: string, k: MultiplayerKinematics) => void
+  onChat?: (fromId: string, fromName: string, message: string) => void
   onServerError?: (code: string) => void
   onConnectionLost?: (info: { code: number; reason: string; clean: boolean }) => void
 
@@ -250,6 +252,7 @@ export class MultiplayerClient {
           | ServerState
           | ServerJoin
           | ServerLeave
+          | ServerChat
         let m: In
         try {
           m = JSON.parse(raw) as In
@@ -318,6 +321,14 @@ export class MultiplayerClient {
             vz: m.v[2],
             vehicle: m.veh,
           })
+          return
+        }
+        if (m.t === 'chat') {
+          this.onChat?.(
+            String(m.i ?? ''),
+            String(m.n ?? '').replace(/\r|\n/g, ' ').trim().slice(0, MAX_LOBBY_NAME_LEN) || 'Player',
+            String(m.m ?? '').replace(/\r|\n/g, ' ').trim().slice(0, 140),
+          )
         }
       }
       socket.addEventListener('message', (ev) => {
@@ -393,5 +404,14 @@ export class MultiplayerClient {
     }
     this.ws = null
     this.localId = null
+  }
+
+  sendChat(message: string): boolean {
+    const text = String(message ?? '')
+      .replace(/\r|\n/g, ' ')
+      .trim()
+      .slice(0, 140)
+    if (text.length < 1) return false
+    return this.send('chat', { m: text })
   }
 }

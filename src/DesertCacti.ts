@@ -55,6 +55,7 @@ const _tmpS = new THREE.Vector3()
 const _rayOrigin = new THREE.Vector3()
 const _rayDown = new THREE.Vector3(0, -1, 0)
 const _raycaster = new THREE.Raycaster()
+const _hullPos = new THREE.Vector3()
 
 function raycastGround(
   terrain: DesertHeightField,
@@ -77,6 +78,24 @@ function raycastGround(
     outNormal.set(0, 1, 0)
   }
   return true
+}
+
+function convexHullDescForMesh(mesh: THREE.Mesh): RAPIER.ColliderDesc | null {
+  const pos = mesh.geometry.getAttribute('position') as THREE.BufferAttribute | undefined
+  if (!pos || pos.count < 4) return null
+  const s = mesh.scale
+  const pts = new Float32Array(pos.count * 3)
+  for (let i = 0; i < pos.count; i++) {
+    _hullPos.fromBufferAttribute(pos, i)
+    pts[i * 3] = _hullPos.x * s.x
+    pts[i * 3 + 1] = _hullPos.y * s.y
+    pts[i * 3 + 2] = _hullPos.z * s.z
+  }
+  try {
+    return RAPIER.ColliderDesc.convexHull(pts)
+  } catch {
+    return null
+  }
 }
 
 type CactusPending = {
@@ -221,12 +240,19 @@ export class DesertCacti {
 
         instanced.setMatrixAt(j, snapMesh.matrixWorld)
 
-        const { halfExtents, centerLocal } = cuboidInRootSpaceFromMeshes(snapMesh)
         snapMesh.matrixWorld.decompose(_tmpV, _tmpQ, _tmpS)
-        const colliderDesc = RAPIER.ColliderDesc.cuboid(halfExtents.x, halfExtents.y, halfExtents.z)
-          .setTranslation(centerLocal.x, centerLocal.y, centerLocal.z)
-          .setFriction(0.75)
-          .setRestitution(0.05)
+        const hull = convexHullDescForMesh(snapMesh)
+        const colliderDesc =
+          hull ??
+          (() => {
+            const { halfExtents, centerLocal } = cuboidInRootSpaceFromMeshes(snapMesh)
+            return RAPIER.ColliderDesc.cuboid(halfExtents.x, halfExtents.y, halfExtents.z).setTranslation(
+              centerLocal.x,
+              centerLocal.y,
+              centerLocal.z,
+            )
+          })()
+        colliderDesc.setFriction(0.75).setRestitution(0.05)
 
         const body = world.createRigidBody(
           RAPIER.RigidBodyDesc.fixed()

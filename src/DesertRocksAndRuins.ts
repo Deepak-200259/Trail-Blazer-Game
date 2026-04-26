@@ -18,6 +18,7 @@ const _tmpQ = new THREE.Quaternion()
 const _tmpV = new THREE.Vector3()
 const _tmpV2 = new THREE.Vector3()
 const _tmpS = new THREE.Vector3()
+const _hullPos = new THREE.Vector3()
 const _ruinsBodyT = new THREE.Vector3()
 const _invRuinsBodyQ = new THREE.Quaternion()
 const _box = new THREE.Box3()
@@ -111,6 +112,24 @@ function ruinsTrimeshColliderDesc(root: THREE.Object3D): RAPIER.ColliderDesc | n
     return RAPIER.ColliderDesc.trimesh(new Float32Array(verts), Uint32Array.from(inds), flags)
       .setFriction(0.82)
       .setRestitution(0.04)
+  } catch {
+    return null
+  }
+}
+
+function convexHullDescForMesh(mesh: THREE.Mesh): RAPIER.ColliderDesc | null {
+  const pos = mesh.geometry.getAttribute('position') as THREE.BufferAttribute | undefined
+  if (!pos || pos.count < 4) return null
+  const s = mesh.scale
+  const pts = new Float32Array(pos.count * 3)
+  for (let i = 0; i < pos.count; i++) {
+    _hullPos.fromBufferAttribute(pos, i)
+    pts[i * 3] = _hullPos.x * s.x
+    pts[i * 3 + 1] = _hullPos.y * s.y
+    pts[i * 3 + 2] = _hullPos.z * s.z
+  }
+  try {
+    return RAPIER.ColliderDesc.convexHull(pts)
   } catch {
     return null
   }
@@ -649,12 +668,19 @@ export class DesertRocksAndRuins {
 
         instanced.setMatrixAt(j, snapMesh.matrixWorld)
 
-        const { halfExtents, centerLocal } = cuboidInRootSpaceFromMeshes(snapMesh)
         snapMesh.matrixWorld.decompose(_tmpV, _tmpQ, _tmpS)
-        const colliderDesc = RAPIER.ColliderDesc.cuboid(halfExtents.x, halfExtents.y, halfExtents.z)
-          .setTranslation(centerLocal.x, centerLocal.y, centerLocal.z)
-          .setFriction(0.78)
-          .setRestitution(0.06)
+        const hull = convexHullDescForMesh(snapMesh)
+        const colliderDesc =
+          hull ??
+          (() => {
+            const { halfExtents, centerLocal } = cuboidInRootSpaceFromMeshes(snapMesh)
+            return RAPIER.ColliderDesc.cuboid(halfExtents.x, halfExtents.y, halfExtents.z).setTranslation(
+              centerLocal.x,
+              centerLocal.y,
+              centerLocal.z,
+            )
+          })()
+        colliderDesc.setFriction(0.78).setRestitution(0.06)
 
         const body = world.createRigidBody(
           RAPIER.RigidBodyDesc.fixed()

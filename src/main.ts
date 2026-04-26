@@ -4,12 +4,15 @@ import { CarConfig } from './CarConfig.ts'
 import { CarPhysicsApp } from './CarPhysicsApp.ts'
 import { WebGameAudio } from './WebGameAudio.ts'
 import { MultiplayerClient, type LobbyPlayer } from './MultiplayerClient.ts'
+import { InGameChat } from './InGameChat.ts'
 
 const START_VEHICLE_LS_KEY = 'car-physics-start-vehicle-v1'
 
-function vehicleDisplayName(v: 1 | 2 | 3): string {
+function vehicleDisplayName(v: 1 | 2 | 3 | 4 | 5): string {
   if (v === 1) return 'Trail Ranger'
   if (v === 2) return 'Dune Titan'
+  if (v === 5) return 'Raptor V'
+  if (v === 4) return 'Storm Reaper'
   return 'Wasteland Mk III'
 }
 
@@ -17,6 +20,27 @@ const canvas = document.querySelector<HTMLCanvasElement>('#canvas')
 if (!canvas) {
   throw new Error('Missing #canvas')
 }
+document.body.classList.remove('game-running')
+
+const installInteractionLocks = (): void => {
+  const prevent = (ev: Event): void => {
+    ev.preventDefault()
+  }
+  window.addEventListener('contextmenu', prevent, { capture: true })
+  window.addEventListener('selectstart', prevent, { capture: true })
+  window.addEventListener('dragstart', prevent, { capture: true })
+  window.addEventListener('gesturestart', prevent as EventListener, { capture: true })
+  window.addEventListener('gesturechange', prevent as EventListener, { capture: true })
+  window.addEventListener('gestureend', prevent as EventListener, { capture: true })
+  document.addEventListener(
+    'touchmove',
+    (ev) => {
+      if (ev.cancelable) ev.preventDefault()
+    },
+    { passive: false, capture: true },
+  )
+}
+installInteractionLocks()
 
 function showStartPanel(
   which: 'root' | 'single' | 'options' | 'mp-menu' | 'join' | 'lobby',
@@ -35,6 +59,9 @@ function showStartPanel(
   }
   const active = document.getElementById(map[which])
   if (active) active.hidden = false
+  document.body.classList.toggle('mp-lobby', which === 'lobby')
+  const chatRoot = document.getElementById('chat-root')
+  if (chatRoot) chatRoot.hidden = which !== 'lobby'
 }
 
 type StartMode = 'solo' | 'mp'
@@ -62,13 +89,13 @@ function errText(code: string): string {
 
 /** Single player / multiplayer entry, or MP lobby until `go`. */
 async function waitForAppStart(): Promise<StartMode> {
-  const readStoredVehicle = (): 1 | 2 | 3 => {
+  const readStoredVehicle = (): 1 | 2 | 3 | 4 | 5 => {
     return CarConfig.normalizeVehicleWire(localStorage.getItem(START_VEHICLE_LS_KEY))
   }
 
-  let vSingle: 1 | 2 | 3 = readStoredVehicle()
+  let vSingle: 1 | 2 | 3 | 4 | 5 = readStoredVehicle()
   /** Chosen in the multiplayer lobby; also used for the initial host/join request. */
-  let vLobby: 1 | 2 | 3 = readStoredVehicle()
+  let vLobby: 1 | 2 | 3 | 4 | 5 = readStoredVehicle()
   CarConfig.setActiveVehicleChoice(vSingle)
 
   if (CarConfig.SCENE_MODE !== 'driving') {
@@ -127,6 +154,12 @@ async function waitForAppStart(): Promise<StartMode> {
   const lobbyPrev = document.getElementById('lobby-vehicle-prev') as HTMLButtonElement | null
   const lobbyNext = document.getElementById('lobby-vehicle-next') as HTMLButtonElement | null
   const lobbyTrack = document.getElementById('lobby-vehicle-track') as HTMLElement | null
+  const chatRoot = document.getElementById('chat-root') as HTMLElement | null
+  const chatLog = document.getElementById('chat-log') as HTMLElement | null
+  const chatComposer = document.getElementById('chat-composer') as HTMLElement | null
+  const chatInput = document.getElementById('chat-input') as HTMLInputElement | null
+  const chatBtn = document.getElementById('chat-mobile-btn') as HTMLButtonElement | null
+  const chatDot = document.getElementById('chat-notify-dot') as HTMLElement | null
 
   if (
     !root ||
@@ -167,6 +200,12 @@ async function waitForAppStart(): Promise<StartMode> {
     !lobbyPrev ||
     !lobbyNext ||
     !lobbyTrack ||
+    !chatRoot ||
+    !chatLog ||
+    !chatComposer ||
+    !chatInput ||
+    !chatBtn ||
+    !chatDot ||
     !nameModal ||
     !nameModalHint ||
     !nameInput ||
@@ -183,11 +222,11 @@ async function waitForAppStart(): Promise<StartMode> {
   }
 
   const syncSingleTrack = (): void => {
-    const frac = ((vSingle - 1) / 3) * 100
+    const frac = ((vSingle - 1) / 5) * 100
     vehicleTrack.style.transform = `translateX(-${frac}%)`
   }
   const syncLobbyTrack = (): void => {
-    const frac = ((vLobby - 1) / 3) * 100
+    const frac = ((vLobby - 1) / 5) * 100
     lobbyTrack.style.transform = `translateX(-${frac}%)`
   }
   const syncSoundToggle = (): void => {
@@ -198,6 +237,21 @@ async function waitForAppStart(): Promise<StartMode> {
   syncSingleTrack()
   syncLobbyTrack()
   syncSoundToggle()
+
+  const lobbyChat = new InGameChat({
+    root: chatRoot,
+    logEl: chatLog,
+    composerEl: chatComposer,
+    inputEl: chatInput,
+    mobileBtn: chatBtn,
+    notifyDotEl: chatDot,
+    localName: CarConfig.getSessionMultiplayerDisplayName() || 'You',
+    sendFn: (text: string) => {
+      if (!mpClient?.connected) return false
+      return mpClient.sendChat(text)
+    },
+  })
+  lobbyChat.setEnabled(false)
 
   const clearLobbyRaf = (): void => {
     if (lobbyRaf) {
@@ -388,6 +442,8 @@ async function waitForAppStart(): Promise<StartMode> {
     const finishSolo = (): void => {
       if (appStarted) return
       appStarted = true
+      lobbyChat.setEnabled(false)
+      lobbyChat.dispose()
       clearLobbyRaf()
       CarConfig.setMultiplayerSession(null)
       lockAll()
@@ -397,6 +453,8 @@ async function waitForAppStart(): Promise<StartMode> {
     const finishMp = (): void => {
       if (appStarted) return
       appStarted = true
+      lobbyChat.setEnabled(false)
+      lobbyChat.dispose()
       clearLobbyRaf()
       lockAll()
       resolve('mp')
@@ -411,6 +469,8 @@ async function waitForAppStart(): Promise<StartMode> {
     }
 
     const resetMp = (): void => {
+      lobbyChat.setEnabled(false)
+      lobbyChat.clearHistory()
       clearLobbyRaf()
       clearRoomOpTimeout()
       lastLobby = null
@@ -460,12 +520,16 @@ async function waitForAppStart(): Promise<StartMode> {
       c.onLobby = (m) => {
         clearRoomOpTimeout()
         try {
+          if (lastRoomCode !== '' && lastRoomCode !== m.code) {
+            lobbyChat.clearHistory()
+          }
           const pl = applySessionNameToLocalRow(c, m.pl)
           lastLobby = { code: m.code, ph: m.ph, end: m.end, pl }
           lastRoomCode = m.code
           joinErr.textContent = ''
           mpMenuErr.textContent = ''
           showStartPanel('lobby')
+          lobbyChat.setEnabled(true)
           renderLobby()
         } finally {
           hideMpFlowLoading()
@@ -531,6 +595,11 @@ async function waitForAppStart(): Promise<StartMode> {
             `Disconnected from server (close ${info.code}${info.clean ? ', clean' : ''}). ` +
             'If this happens repeatedly, the host may have left or the server may have restarted.'
         })()
+      }
+      c.onChat = (fromId, fromName, message) => {
+        if (appStarted) return
+        if (fromId === c.localId) return
+        lobbyChat.addRemoteMessage(fromName, message)
       }
       c.onGameStart = (pr, plFromGo) => {
         if (appStarted) return
@@ -612,18 +681,18 @@ async function waitForAppStart(): Promise<StartMode> {
       const step = dir === 'next' ? 1 : -1
       if (which === 'single') {
         let n = vSingle + step
-        if (n > 3) n = 1
-        if (n < 1) n = 3
-        vSingle = n as 1 | 2 | 3
+        if (n > 5) n = 1
+        if (n < 1) n = 5
+        vSingle = n as 1 | 2 | 3 | 4 | 5
         localStorage.setItem(START_VEHICLE_LS_KEY, String(vSingle))
         CarConfig.setActiveVehicleChoice(vSingle)
         syncSingleTrack()
         return
       }
       let n = vLobby + step
-      if (n > 3) n = 1
-      if (n < 1) n = 3
-      vLobby = n as 1 | 2 | 3
+      if (n > 5) n = 1
+      if (n < 1) n = 5
+      vLobby = n as 1 | 2 | 3 | 4 | 5
       localStorage.setItem(START_VEHICLE_LS_KEY, String(vLobby))
       CarConfig.setActiveVehicleChoice(vLobby)
       syncLobbyTrack()
@@ -704,6 +773,10 @@ async function waitForAppStart(): Promise<StartMode> {
         showStartPanel('join')
       })()
     })
+    joinCode.addEventListener('input', () => {
+      const clean = joinCode.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6)
+      if (joinCode.value !== clean) joinCode.value = clean
+    })
     joinSubmit.addEventListener('click', () => {
       if (!mpClient) {
         joinErr.textContent = 'Not connected. Open Multiplayer and try again.'
@@ -717,7 +790,7 @@ async function waitForAppStart(): Promise<StartMode> {
         }
         joinErr.textContent = ''
         mpMenuErr.textContent = ''
-        const raw = joinCode.value.toUpperCase().replace(/[^A-Z0-9]/g, '')
+        const raw = joinCode.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6)
         if (raw.length < 4) {
           joinErr.textContent = 'Enter a valid room id (4 or more characters).'
           return
@@ -771,6 +844,7 @@ async function waitForAppStart(): Promise<StartMode> {
 
 const mode = await waitForAppStart()
 CarConfig.setSessionMultiplayer(mode === 'mp')
+document.body.classList.remove('mp-lobby')
 
 const startOverlay = document.getElementById('start-overlay')
 startOverlay?.classList.add('start-overlay--hidden')
@@ -820,6 +894,7 @@ setLoadingProgressRatio(1)
 if (loadingOverlay) loadingOverlay.hidden = true
 if (CarConfig.SCENE_MODE === 'driving' && hudWrap) hudWrap.classList.remove('hud-off')
 app.start()
+document.body.classList.add('game-running')
 if (CarConfig.SCENE_MODE === 'driving') {
   canvas.style.pointerEvents = 'auto'
 }

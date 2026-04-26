@@ -10,6 +10,12 @@ export type TyrePlacementConfig = {
   alongFrontFrac: number
   alongRearFrac: number
   lateralFrac: number
+  frontLateralFrac?: number
+  rearLateralFrac?: number
+  frontWidthMul?: number
+  rearWidthMul?: number
+  frontExtraDropY?: number
+  rearExtraDropY?: number
   extraDropY: number
   leftYaw: number
 }
@@ -48,11 +54,17 @@ export class CarConfig {
   static readonly CHASSIS_2_MODEL_URL = '/chassis_2.glb'
   /** `public/chassis_3.glb` — uses `VEHICLE3_TYRE_*`. */
   static readonly CHASSIS_3_MODEL_URL = '/chassis_3.glb'
+ /** `public/chassis_4.glb` — uses `VEHICLE4_TYRE_*`. */
+  static readonly CHASSIS_4_MODEL_URL = '/chassis_4.glb'
+  /** `public/chassis_5.glb` — uses `VEHICLE5_TYRE_*`. */
+  static readonly CHASSIS_5_MODEL_URL = '/chassis_5.glb'
 
   static readonly WHEEL_MODEL_URL_1 = '/tyre_1.glb'
 
   static readonly WHEEL_MODEL_URL_2 = '/tyre_2.glb'
   static readonly WHEEL_MODEL_URL_3 = '/tyre_3.glb'
+  static readonly WHEEL_MODEL_URL_4 = '/tyre_4.glb'
+  static readonly WHEEL_MODEL_URL_5 = '/tyre_5.glb'
   /** Default chassis when no start-screen choice (`activeChassisUrl`). */
   static readonly JEEP_MODEL_URL = CarConfig.CHASSIS_2_MODEL_URL
 
@@ -68,8 +80,8 @@ export class CarConfig {
     return CarConfig._sessionWheelUrl ?? CarConfig.WHEEL_MODEL_URL_1
   }
 
-  /** `1` / `2` / `3` → matching chassis + tyre GLBs. */
-  static setActiveVehicleChoice(vehicle: 1 | 2 | 3): void {
+  /** `1` / `2` / `3` / `4` / `5` → matching chassis + tyre GLBs. */
+  static setActiveVehicleChoice(vehicle: 1 | 2 | 3 | 4 | 5): void {
     if (vehicle === 1) {
       CarConfig._sessionChassisUrl = CarConfig.CHASSIS_1_MODEL_URL
       CarConfig._sessionWheelUrl = CarConfig.WHEEL_MODEL_URL_1
@@ -80,21 +92,38 @@ export class CarConfig {
       CarConfig._sessionWheelUrl = CarConfig.WHEEL_MODEL_URL_2
       return
     }
-    CarConfig._sessionChassisUrl = CarConfig.CHASSIS_3_MODEL_URL
-    CarConfig._sessionWheelUrl = CarConfig.WHEEL_MODEL_URL_3
+    if (vehicle === 3) {
+      CarConfig._sessionChassisUrl = CarConfig.CHASSIS_3_MODEL_URL
+      CarConfig._sessionWheelUrl = CarConfig.WHEEL_MODEL_URL_3
+      return
+    }
+    if (vehicle === 4) {
+      CarConfig._sessionChassisUrl = CarConfig.CHASSIS_4_MODEL_URL
+      CarConfig._sessionWheelUrl = CarConfig.WHEEL_MODEL_URL_4
+      return
+    }
+    if (vehicle === 5) {
+      CarConfig._sessionChassisUrl = CarConfig.CHASSIS_5_MODEL_URL
+      CarConfig._sessionWheelUrl = CarConfig.WHEEL_MODEL_URL_5
+      return
+    }
   }
 
   /** `1`–`3` matching the active chassis + wheel set for this page load. */
-  static get activeVehicleChoice(): 1 | 2 | 3 {
+  static get activeVehicleChoice(): 1 | 2 | 3 | 4 | 5 {
     const u = CarConfig.activeChassisUrl
     if (u === CarConfig.CHASSIS_1_MODEL_URL) return 1
+    if (u === CarConfig.CHASSIS_5_MODEL_URL) return 5
+    if (u === CarConfig.CHASSIS_4_MODEL_URL) return 4
     if (u === CarConfig.CHASSIS_3_MODEL_URL) return 3
     return 2
   }
 
-  /** Lobby / kinematics `v` field: coerce to `1` | `2` | `3`. */
-  static normalizeVehicleWire(v: unknown): 1 | 2 | 3 {
+  /** Lobby / kinematics `v` field: coerce to `1` | `2` | `3` | `4` | `5`. */
+  static normalizeVehicleWire(v: unknown): 1 | 2 | 3 | 4 | 5 {
     const n = Number(v)
+    if (n === 5) return 5
+    if (n === 4) return 4
     if (n === 3) return 3
     if (n === 2) return 2
     return 1
@@ -312,6 +341,8 @@ export class CarConfig {
 
   /** Chassis world +Y below this (upside-down) counts as “flipped” for auto-reset. */
   static readonly AUTO_RESET_FLIP_UP_Y_MAX = -0.42
+  /** Sideways/upset pose threshold used when wheels lose ground contact. */
+  static readonly AUTO_RESET_UPSET_UP_Y_MAX = 0.22
   /** Seconds upside-down before auto reset (same spawn logic as R). */
   static readonly AUTO_RESET_FLIP_HOLD_S = 2
   /** Multiplier on Δt for `Water` shader time (normal map scroll / ripples). */
@@ -332,6 +363,20 @@ export class CarConfig {
   static readonly POND_OVERLAY_FADE_S = 3.4
   /** Peak rain mask intensity for the fullscreen droplets overlay. */
   static readonly POND_OVERLAY_PEAK_INTENSITY = 0.26
+  /** If chassis Y drops below `pondSurfaceY - this`, force respawn at last spawn/reset point. */
+  static readonly FALL_RESPAWN_BELOW_WATER_M = 9
+  /** For non-desert fallback (no pond), respawn below `surfaceY - this`. */
+  static readonly FALL_RESPAWN_BELOW_SURFACE_M = 26
+  /** Inset from map edge for invisible circular boundary collider (meters). */
+  static readonly BOUNDARY_RING_INSET_M = 6
+  /** Radial thickness of invisible circular boundary collider (meters). */
+  static readonly BOUNDARY_RING_THICKNESS_M = 14
+  /** Top of boundary ring above local surface to cover mountain climbs (meters). */
+  static readonly BOUNDARY_RING_TOP_ABOVE_SURFACE_M = 320
+  /** Bottom of boundary ring below local surface to block under-run (meters). */
+  static readonly BOUNDARY_RING_BOTTOM_BELOW_SURFACE_M = 56
+  /** Ring tessellation; collider triangles only, no render mesh. */
+  static readonly BOUNDARY_RING_SEGMENTS = 40
 
   /** Coconut palm GLB in `public/` (trees scene). If load fails, procedural palms are used. */
   static readonly COCONUT_TREE_MODEL_URLS = ['/coconut_trees_1.glb'] as const
@@ -535,8 +580,30 @@ export class CarConfig {
   static readonly VEHICLE3_TYRE_ALONG_FRONT_FRAC = 0.58
   static readonly VEHICLE3_TYRE_ALONG_REAR_FRAC = 0.48
   static readonly VEHICLE3_TYRE_LATERAL_FRAC = 0.88
-  static readonly VEHICLE3_TYRE_EXTRA_DROP_Y = 0.3
+  static readonly VEHICLE3_TYRE_EXTRA_DROP_Y = 0.45
   static readonly VEHICLE3_TYRE_LEFT_YAW = Math.PI
+  /**
+   * Tyre layout for `chassis_4.glb` (`CHASSIS_4_MODEL_URL`).
+   * Start from vehicle 2 layout and tune after visual checks.
+   */
+  static readonly VEHICLE4_TYRE_WIDTH_FRAC = 0.58
+  static readonly VEHICLE4_TYRE_ALONG_FRONT_FRAC = 0.68
+  static readonly VEHICLE4_TYRE_ALONG_REAR_FRAC = 0.72
+  static readonly VEHICLE4_TYRE_LATERAL_FRAC = 0.88
+  static readonly VEHICLE4_TYRE_EXTRA_DROP_Y = 0.55
+  static readonly VEHICLE4_TYRE_LEFT_YAW = Math.PI
+  /** Tyre layout for `chassis_5.glb` (`CHASSIS_5_MODEL_URL`). */
+  static readonly VEHICLE5_TYRE_WIDTH_FRAC = 0.58
+  static readonly VEHICLE5_TYRE_ALONG_FRONT_FRAC = 0.95
+  static readonly VEHICLE5_TYRE_ALONG_REAR_FRAC = 0.9
+  static readonly VEHICLE5_TYRE_LATERAL_FRAC = 0.9
+  static readonly VEHICLE5_TYRE_FRONT_LATERAL_FRAC = 0.1
+  static readonly VEHICLE5_TYRE_FRONT_WIDTH_MUL = 0.85
+  static readonly VEHICLE5_TYRE_REAR_WIDTH_MUL = 1.1
+  static readonly VEHICLE5_TYRE_FRONT_EXTRA_DROP_Y = 0.17
+  static readonly VEHICLE5_TYRE_REAR_EXTRA_DROP_Y = 0.23
+  static readonly VEHICLE5_TYRE_EXTRA_DROP_Y = 0.17
+  static readonly VEHICLE5_TYRE_LEFT_YAW = Math.PI
 
   /** Lowercase filename from a chassis URL (strip query; last path segment). */
   static chassisModelBasename(url: string): string {
@@ -565,6 +632,32 @@ export class CarConfig {
         lateralFrac: CarConfig.VEHICLE3_TYRE_LATERAL_FRAC,
         extraDropY: CarConfig.VEHICLE3_TYRE_EXTRA_DROP_Y,
         leftYaw: CarConfig.VEHICLE3_TYRE_LEFT_YAW,
+      }
+    }
+    if (bn === CarConfig.chassisModelBasename(CarConfig.CHASSIS_4_MODEL_URL)) {
+      return {
+        widthFrac: CarConfig.VEHICLE4_TYRE_WIDTH_FRAC,
+        alongFrontFrac: CarConfig.VEHICLE4_TYRE_ALONG_FRONT_FRAC,
+        alongRearFrac: CarConfig.VEHICLE4_TYRE_ALONG_REAR_FRAC,
+        lateralFrac: CarConfig.VEHICLE4_TYRE_LATERAL_FRAC,
+        extraDropY: CarConfig.VEHICLE4_TYRE_EXTRA_DROP_Y,
+        leftYaw: CarConfig.VEHICLE4_TYRE_LEFT_YAW,
+      }
+    }
+    if (bn === CarConfig.chassisModelBasename(CarConfig.CHASSIS_5_MODEL_URL)) {
+      return {
+        widthFrac: CarConfig.VEHICLE5_TYRE_WIDTH_FRAC,
+        alongFrontFrac: CarConfig.VEHICLE5_TYRE_ALONG_FRONT_FRAC,
+        alongRearFrac: CarConfig.VEHICLE5_TYRE_ALONG_REAR_FRAC,
+        lateralFrac: CarConfig.VEHICLE5_TYRE_LATERAL_FRAC,
+        frontLateralFrac: CarConfig.VEHICLE5_TYRE_FRONT_LATERAL_FRAC,
+        rearLateralFrac: CarConfig.VEHICLE5_TYRE_LATERAL_FRAC,
+        frontWidthMul: CarConfig.VEHICLE5_TYRE_FRONT_WIDTH_MUL,
+        rearWidthMul: CarConfig.VEHICLE5_TYRE_REAR_WIDTH_MUL,
+        frontExtraDropY: CarConfig.VEHICLE5_TYRE_FRONT_EXTRA_DROP_Y,
+        rearExtraDropY: CarConfig.VEHICLE5_TYRE_REAR_EXTRA_DROP_Y,
+        extraDropY: CarConfig.VEHICLE5_TYRE_EXTRA_DROP_Y,
+        leftYaw: CarConfig.VEHICLE5_TYRE_LEFT_YAW,
       }
     }
     return {
@@ -628,6 +721,15 @@ export class CarConfig {
 
   static readonly MAX_ENGINE_FORCE = 35 * (CarConfig.CHASSIS_MASS / 10)
   static readonly MAX_BRAKE_FORCE = 1
+  /** Vehicle 2 gets extra drive punch vs baseline engine force. */
+  static readonly VEHICLE2_ENGINE_FORCE_MULT = 1.22
+  /** Vehicle 2 suspension: >1 extends rest/travel for a bouncier ride feel. */
+  static readonly VEHICLE2_SUSPENSION_REST_MULT = 1.08
+  static readonly VEHICLE2_SUSPENSION_TRAVEL_MULT = 1.2
+  /** Lower damping than baseline (1.0) to let wheel oscillation rebound more. */
+  static readonly VEHICLE2_SUSPENSION_DAMP_MULT = 0.82
+  /** Upside-down steering helper: torque impulse scale (N·m·s) when trying to roll back on wheels. */
+  static readonly VEHICLE2_RIGHTING_TORQUE_IMPULSE = 220
   /** Hard cap for ground speed (km/h → m/s clamp on XZ after each physics step). */
   static readonly MAX_SPEED_KMH = 120
 
@@ -648,7 +750,24 @@ export class CarConfig {
 
   static readonly PHYSICS_TYRE_RADIUS_SCALE = 0.78
   static readonly SUSPENSION_REST_LENGTH = 0.32
-  static readonly JEEP_SCALE = 1.2
+  /** Vehicle-wise base chassis scale; tyres follow automatically from chassis bbox in CarGeometry. */
+  static readonly VEHICLE1_SCALE = 1.65
+  static readonly VEHICLE2_SCALE = 2
+  static readonly VEHICLE3_SCALE = 1.2
+  static readonly VEHICLE4_SCALE = 1.4
+  static readonly VEHICLE5_SCALE = 1.4
+
+  static chassisScaleForUrl(chassisUrl: string): number {
+    const bn = CarConfig.chassisModelBasename(chassisUrl)
+    if (bn === CarConfig.chassisModelBasename(CarConfig.CHASSIS_1_MODEL_URL)) return CarConfig.VEHICLE1_SCALE
+    if (bn === CarConfig.chassisModelBasename(CarConfig.CHASSIS_5_MODEL_URL)) return CarConfig.VEHICLE5_SCALE
+    if (bn === CarConfig.chassisModelBasename(CarConfig.CHASSIS_4_MODEL_URL)) return CarConfig.VEHICLE4_SCALE
+    if (bn === CarConfig.chassisModelBasename(CarConfig.CHASSIS_3_MODEL_URL)) return CarConfig.VEHICLE3_SCALE
+    return CarConfig.VEHICLE2_SCALE
+  }
+  static get activeChassisScale(): number {
+    return CarConfig.chassisScaleForUrl(CarConfig.activeChassisUrl)
+  }
 
   /** Half-extent (m) of ground physics cuboid on X/Z — huge “infinite” slab. */
   static readonly GROUND_HALF_EXTENT_XZ = 2500

@@ -30,7 +30,7 @@ wss.on('error', (err) => {
 /**
  * Authoritative session per socket id (`hello.id`).
  * `name` is the display name set on `host` / `join` / `setName` (never read from clients for other ids).
- * @type {Map<string, { ws: import('ws').WebSocket, roomCode: string | null, vehicle: 1 | 2 | 3, name: string, ready: boolean, isHost: boolean, inGame: boolean }>}
+ * @type {Map<string, { ws: import('ws').WebSocket, roomCode: string | null, vehicle: 1 | 2 | 3 | 4 | 5, name: string, ready: boolean, isHost: boolean, inGame: boolean }>}
  */
 const players = new Map()
 /** @type {Map<string, { code: string, hostId: string, members: Set<string>, phase: 'lobby' | 'cd' | 'playing', endsAt: number | null, cdTmr: ReturnType<typeof setTimeout> | null }>} */
@@ -39,6 +39,7 @@ const rooms = new Map()
 const roomChars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 
 const MAX_NAME_LEN = 20
+const MAX_CHAT_LEN = 140
 /** @type {WeakMap<import('ws').WebSocket, boolean>} */
 const wsAlive = new WeakMap()
 
@@ -55,9 +56,11 @@ function nameFromClientPayload(d) {
   return sanitizeName(d.playerName ?? d.n ?? d.name ?? d.displayName ?? d.label)
 }
 
-/** @returns {1 | 2 | 3} */
+/** @returns {1 | 2 | 3 | 4 | 5} */
 function vehicleFromClient(v) {
   const n = Number(v)
+  if (n === 5) return 5
+  if (n === 4) return 4
   if (n === 3) return 3
   if (n === 2) return 2
   return 1
@@ -103,6 +106,13 @@ function displayNameForPlayerId(playerId) {
   if (!p) return 'Player'
   const n = sanitizeName(p.name)
   return n.length > 0 ? n : 'Player'
+}
+
+function sanitizeChat(raw) {
+  if (raw == null) return ''
+  const s = String(raw).replace(/\r|\n/g, ' ').trim()
+  if (s.length > MAX_CHAT_LEN) return s.slice(0, MAX_CHAT_LEN)
+  return s
 }
 
 function newRoomCode() {
@@ -415,6 +425,26 @@ wss.on('connection', (ws) => {
         if (pid === from) continue
         const o = players.get(pid)
         if (o && o.inGame && o.ws.readyState === 1) o.ws.send(s)
+      }
+      return
+    }
+
+    if (typ === 'chat') {
+      if (!me.roomCode) return
+      const r = rooms.get(me.roomCode)
+      if (!r || (r.phase !== 'playing' && r.phase !== 'lobby' && r.phase !== 'cd')) return
+      const msg = sanitizeChat(d.m ?? d.message ?? d.text)
+      if (!msg) return
+      const out = {
+        t: 'chat',
+        i: from,
+        n: displayNameForPlayerId(from),
+        m: msg,
+      }
+      const s = JSON.stringify(out)
+      for (const pid of r.members) {
+        const o = players.get(pid)
+        if (o && o.ws.readyState === 1) o.ws.send(s)
       }
       return
     }
